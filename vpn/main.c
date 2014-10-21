@@ -249,12 +249,14 @@ int main(int argc, char *argv[])
 			"Connection Manager VPN daemon", VERSION);
 	__connman_dbus_init(conn);
 
+	__connman_inotify_init();
+	__connman_storage_init();
+
 	if (!option_config)
 		__vpn_settings_init(CONFIGMAINFILE);
 	else
 		__vpn_settings_init(option_config);
 
-	__connman_inotify_init();
 	__connman_agent_init();
 	__vpn_provider_init();
 	__vpn_manager_init();
@@ -281,6 +283,7 @@ int main(int argc, char *argv[])
 	__vpn_manager_cleanup();
 	__vpn_provider_cleanup();
 	__connman_agent_cleanup();
+	__connman_storage_cleanup();
 	__connman_inotify_cleanup();
 	__connman_dbus_cleanup();
 	__connman_log_cleanup(false);
