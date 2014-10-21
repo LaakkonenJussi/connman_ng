@@ -1230,13 +1230,15 @@ int main(int argc, char *argv[])
 
 	__connman_dbus_init(conn);
 
+	__connman_inotify_init();
+	__connman_storage_init();
+
 	if (!option_config)
 		config_init(CONFIGMAINFILE);
 	else
 		config_init(option_config);
 
 	__connman_util_init();
-	__connman_inotify_init();
 	__connman_technology_init();
 	__connman_notifier_init();
 	__connman_agent_init();
@@ -1322,6 +1324,7 @@ int main(int argc, char *argv[])
 	__connman_ipconfig_cleanup();
 	__connman_notifier_cleanup();
 	__connman_technology_cleanup();
+	__connman_storage_cleanup();
 	__connman_inotify_cleanup();
 
 	__connman_util_cleanup();
