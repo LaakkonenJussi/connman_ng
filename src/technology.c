@@ -207,7 +207,7 @@ done:
 
 	__connman_storage_save_global(keyfile);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 static void tethering_changed(struct connman_technology *technology)
@@ -494,7 +494,7 @@ static void technology_load(struct connman_technology *technology)
 done:
 	g_free(identifier);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 bool __connman_technology_get_offlinemode(void)
@@ -531,7 +531,7 @@ static void connman_technology_save_offlinemode(void)
 		}
 	}
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 static bool connman_technology_load_offlinemode(void)
@@ -552,7 +552,7 @@ static bool connman_technology_load_offlinemode(void)
 		g_clear_error(&error);
 	}
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return offlinemode;
 }

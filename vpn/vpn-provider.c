@@ -1144,7 +1144,7 @@ static int provider_load_from_keyfile(struct vpn_provider *provider,
 	settings = g_key_file_get_keys(keyfile, provider->identifier, &length,
 				NULL);
 	if (!settings) {
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 		return -ENOENT;
 	}
 
@@ -1190,7 +1190,7 @@ static int vpn_provider_load(struct vpn_provider *provider)
 
 	provider_load_from_keyfile(provider, keyfile);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 	return 0;
 }
 
@@ -1322,7 +1322,7 @@ static int vpn_provider_save(struct vpn_provider *provider)
 		provider->driver->save(provider, keyfile);
 
 	__connman_storage_save_provider(keyfile, provider->identifier);
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return 0;
 }
@@ -2360,7 +2360,7 @@ static void provider_create_all_from_type(const char *provider_type)
 
 		if (strcmp(provider_type, type) != 0) {
 			g_free(type);
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 
@@ -2368,7 +2368,7 @@ static void provider_create_all_from_type(const char *provider_type)
 			DBG("could not create provider");
 
 		g_free(type);
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 	}
 	g_strfreev(providers);
 }
@@ -3441,10 +3441,10 @@ static void remove_unprovisioned_providers(void)
 
 	next:
 		if (keyfile)
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 
 		if (configkeyfile)
-			g_key_file_free(configkeyfile);
+			g_key_file_unref(configkeyfile);
 
 		g_free(section);
 		g_free(file);

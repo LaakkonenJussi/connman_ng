@@ -48,6 +48,65 @@ static GMainLoop *main_loop = NULL;
 
 static unsigned int __terminated = 0;
 
+static struct {
+	unsigned int timeout_inputreq;
+} connman_vpn_settings  = {
+	.timeout_inputreq = DEFAULT_INPUT_REQUEST_TIMEOUT,
+};
+
+static GKeyFile *load_config(const char *file)
+{
+	GError *err = NULL;
+	GKeyFile *keyfile;
+
+	keyfile = g_key_file_new();
+
+	g_key_file_set_list_separator(keyfile, ',');
+
+	if (!g_key_file_load_from_file(keyfile, file, 0, &err)) {
+		if (err->code != G_FILE_ERROR_NOENT) {
+			connman_error("Parsing %s failed: %s", file,
+								err->message);
+		}
+
+		g_error_free(err);
+		g_key_file_unref(keyfile);
+		return NULL;
+	}
+
+	return keyfile;
+}
+
+static void parse_config(GKeyFile *config, const char *file)
+{
+	GError *error = NULL;
+	int timeout;
+
+	if (!config)
+		return;
+
+	DBG("parsing %s", file);
+
+	timeout = g_key_file_get_integer(config, "General",
+			"InputRequestTimeout", &error);
+	if (!error && timeout >= 0)
+		connman_vpn_settings.timeout_inputreq = timeout * 1000;
+
+	g_clear_error(&error);
+}
+
+static int config_init(const char *file)
+{
+	GKeyFile *config;
+
+	config = load_config(file);
+	parse_config(config, file);
+	if (config)
+		g_key_file_unref(config);
+
+	return 0;
+}
+
 static gboolean signal_handler(GIOChannel *channel, GIOCondition cond,
 							gpointer user_data)
 {
