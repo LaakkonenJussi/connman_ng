@@ -43,6 +43,8 @@ struct connman_inotify_cb {
 struct connman_inotify {
 	unsigned int refcount;
 
+	GIOChannel *channel;
+	uint watch;
 	int wd;
 
 	GSList *list;
@@ -103,6 +105,8 @@ static gboolean inotify_data(GIOChannel *channel, GIOCondition cond,
 
 	next_event = buffer;
 
+	connman_inotify_ref(inotify);
+
 	while (bytes_read > 0) {
 		struct connman_inotify *inotify = NULL;
 		struct inotify_event *event;
@@ -147,6 +151,8 @@ static gboolean inotify_data(GIOChannel *channel, GIOCondition cond,
 			connman_inotify_unref(inotify);
 		}
 	}
+
+	connman_inotify_unref(inotify);
 
 	return TRUE;
 }
