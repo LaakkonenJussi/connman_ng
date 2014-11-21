@@ -75,6 +75,7 @@ static GHashTable *inotify_hash;
 static gboolean inotify_data(GIOChannel *channel, GIOCondition cond,
 							gpointer user_data)
 {
+	struct connman_inotify *inotify = user_data;
 	char buffer[sizeof(struct inotify_event) + NAME_MAX + 1];
 	char *next_event;
 	gsize bytes_read;
