@@ -43,6 +43,9 @@
 
 #define DEFAULT_INPUT_REQUEST_TIMEOUT (120 * 1000)
 #define DEFAULT_BROWSER_LAUNCH_TIMEOUT (300 * 1000)
+#define DEFAULT_STORAGE_DIR_PERMISSIONS (0700)
+#define DEFAULT_STORAGE_FILE_PERMISSIONS (0600)
+#define DEFAULT_UMASK (0077)
 
 #define DEFAULT_ONLINE_CHECK_IPV4_URL "http://ipv4.connman.net/online/status.html"
 #define DEFAULT_ONLINE_CHECK_IPV6_URL "http://ipv6.connman.net/online/status.html"
@@ -117,6 +120,10 @@ static struct {
 	bool single_tech;
 	char **tethering_technologies;
 	bool persistent_tethering_mode;
+	char *storage_root;
+	mode_t storage_dir_permissions;
+	mode_t storage_file_permissions;
+	mode_t umask;
 	bool enable_6to4;
 	char *vendor_class_id;
 	bool enable_online_check;
@@ -153,6 +160,9 @@ static struct {
 	.single_tech = false,
 	.tethering_technologies = NULL,
 	.persistent_tethering_mode = false,
+	.storage_dir_permissions = DEFAULT_STORAGE_DIR_PERMISSIONS,
+	.storage_file_permissions = DEFAULT_STORAGE_FILE_PERMISSIONS,
+	.umask = DEFAULT_UMASK,
 	.enable_6to4 = false,
 	.vendor_class_id = NULL,
 	.enable_online_check = true,
@@ -191,6 +201,10 @@ static struct {
 #define CONF_SINGLE_TECH                "SingleConnectedTechnology"
 #define CONF_TETHERING_TECHNOLOGIES      "TetheringTechnologies"
 #define CONF_PERSISTENT_TETHERING_MODE  "PersistentTetheringMode"
+#define CONF_STORAGE_ROOT               "StorageRoot"
+#define CONF_STORAGE_DIR_PERMISSIONS    "StorageDirPermissions"
+#define CONF_STORAGE_FILE_PERMISSIONS   "StorageFilePermissions"
+#define CONF_UMASK                      "Umask"
 #define CONF_ENABLE_6TO4                "Enable6to4"
 #define CONF_VENDOR_CLASS_ID            "VendorClassID"
 #define CONF_ENABLE_ONLINE_CHECK        "EnableOnlineCheck"
@@ -228,6 +242,10 @@ static const char *supported_options[] = {
 	CONF_SINGLE_TECH,
 	CONF_TETHERING_TECHNOLOGIES,
 	CONF_PERSISTENT_TETHERING_MODE,
+	CONF_STORAGE_ROOT,
+	CONF_STORAGE_DIR_PERMISSIONS,
+	CONF_STORAGE_FILE_PERMISSIONS,
+	CONF_UMASK,
 	CONF_ENABLE_6TO4,
 	CONF_VENDOR_CLASS_ID,
 	CONF_ENABLE_ONLINE_CHECK,
@@ -429,6 +447,29 @@ static void online_check_settings_log(void)
 		connman_settings.online_check_successes_threshold);
 }
 
+static gboolean parse_perm(GKeyFile *config, const char *group,
+					const char *key, mode_t *perm)
+{
+	gboolean ok = FALSE;
+	char *str = g_key_file_get_string(config, group, key, NULL);
+	if (str) {
+		/*
+		 * Some people are thinking that # is a comment
+		 * anywhere on the line, not just at the beginning
+		 */
+		unsigned long val;
+		char *comment = strchr(str, '#');
+		if (comment) *comment = 0;
+		val = strtoul(g_strstrip(str), NULL, 0);
+		if (val > 0 && !(val & ~0777UL)) {
+			*perm = (mode_t)val;
+			ok = TRUE;
+		}
+		g_free(str);
+	}
+	return ok;
+}
+
 static void parse_config(GKeyFile *config, const char *file)
 {
 	GError *error = NULL;
@@ -620,6 +661,17 @@ static void parse_config(GKeyFile *config, const char *file)
 		connman_settings.persistent_tethering_mode = boolean;
 
 	g_clear_error(&error);
+
+	connman_settings.storage_root = __connman_config_get_string(config,
+				group, CONF_STORAGE_ROOT, NULL);
+
+	parse_perm(config, group, CONF_STORAGE_DIR_PERMISSIONS,
+				&connman_settings.storage_dir_permissions);
+
+	parse_perm(config, group, CONF_STORAGE_FILE_PERMISSIONS,
+				&connman_settings.storage_file_permissions);
+
+	parse_perm(config, group, CONF_UMASK, &connman_settings.umask);
 
 	boolean = __connman_config_get_bool(config, GENERAL_GROUP,
 					CONF_ENABLE_6TO4, &error);
@@ -1230,13 +1282,23 @@ int main(int argc, char *argv[])
 
 	__connman_dbus_init(conn);
 
-	__connman_inotify_init();
-	__connman_storage_init();
-
 	if (!option_config)
 		config_init(CONFIGMAINFILE);
 	else
-		config_init(option_config);
+		config_init(option_config);;
+
+	__connman_inotify_init();
+	__connman_storage_init(connman_settings.storage_root,
+				connman_settings.storage_dir_permissions,
+				connman_settings.storage_file_permissions);
+
+	if (g_mkdir_with_parents(STORAGEDIR,
+			connman_settings.storage_dir_permissions) < 0) {
+		if (errno != EEXIST)
+			perror("Failed to create storage directory");
+	}
+
+	umask(connman_settings.umask);
 
 	__connman_util_init();
 	__connman_inotify_init();
