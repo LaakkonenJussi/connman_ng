@@ -317,6 +317,11 @@ int main(int argc, char *argv[])
 	__connman_log_init(argv[0], option_debug, option_detach, false,
 			"Connection Manager VPN daemon", VERSION);
 
+	if (!option_config)
+		__vpn_settings_init(CONFIGMAINFILE);
+	else
+		__vpn_settings_init(option_config);
+
 	__connman_inotify_init();
 	__connman_storage_init(connman_vpn_settings.storage_root,
 			connman_vpn_settings.storage_dir_permissions,
@@ -357,14 +362,6 @@ int main(int argc, char *argv[])
 	__connman_log_init(argv[0], option_debug, option_detach, false,
 			"Connection Manager VPN daemon", VERSION);
 	__connman_dbus_init(conn);
-
-	__connman_inotify_init();
-	__connman_storage_init();
-
-	if (!option_config)
-		__vpn_settings_init(CONFIGMAINFILE);
-	else
-		__vpn_settings_init(option_config);
 
 	__connman_agent_init();
 	__vpn_provider_init();
