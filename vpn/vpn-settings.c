@@ -57,6 +57,20 @@ struct vpn_plugin_data {
 
 GHashTable *plugin_hash = NULL;
 
+const char *vpn_settings_get_state_dir()
+{
+	return connman_vpn_settings.state_dir ?
+		connman_vpn_settings.state_dir :
+		DEFAULT_VPN_STATEDIR;
+}
+
+const char *__vpn_settings_get_storage_root()
+{
+	return connman_vpn_settings.storage_root ?
+				connman_vpn_settings.storage_root :
+				DEFAULT_STORAGE_ROOT;
+}
+
 bool vpn_settings_is_system_user(const char *user)
 {
 	struct passwd *pwd;
