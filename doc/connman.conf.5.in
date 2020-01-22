@@ -338,6 +338,12 @@ If this option is not set, it tries to write into
 @runstatedir@/connman/resolv.conf and fallbacks to @sysconfdir@/resolv.conf if
 it fails (@runstatedir@/connman does not exist or is not writeable).
 If you do not want to update resolv.conf, you can set /dev/null.
+.TP
+.BI FallbackDeviceTypes= interface:devtype\fR[,...]
+If /sys/class/net/<interface>/uevent does not contain DEVTYPE information,
+heuristics are used to choose between wifi and ethernet device types. If
+neither is appropriate, this setting can be used to provide more suitable
+fallback value - e.g. rndis0:gadget.
 .SH "EXAMPLE"
 The following example configuration disables hostname updates and enables
 ethernet tethering.
