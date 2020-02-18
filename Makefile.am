@@ -217,6 +217,9 @@ scriptdir = $(libdir)/connman/scripts
 storagedir = $(localstatedir)/lib/connman
 vpn_storagedir = $(localstatedir)/lib/connman-vpn
 
+# Path in users' home dir to use as storage dir
+userstorage = ".local/share/system/privileged"
+
 configdir = ${sysconfdir}/connman
 
 if MAINTAINER_MODE
@@ -257,9 +260,10 @@ src_connmand_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DSTATEDIR=\""$(statedir)"\" \
 				-DPLUGINDIR=\""$(build_plugindir)"\" \
 				-DSCRIPTDIR=\""$(build_scriptdir)"\" \
-				-DSTORAGEDIR=\""$(storagedir)\"" \
-				-DVPN_STORAGEDIR=\""$(vpn_storagedir)\"" \
-				-DCONFIGDIR=\""$(configdir)\"" \
+				-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+				-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+				-DCONFIGDIR=\""$(configdir)"\" \
+				-DDEFAULT_VPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-I$(builddir)/src
 
 EXTRA_DIST = src/genbuiltin src/connman-dbus.conf src/connman-polkit.conf \
@@ -273,10 +277,9 @@ vpn_connman_vpnd_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DVPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-DPLUGINDIR=\""$(build_vpn_plugindir)"\" \
 				-DSCRIPTDIR=\""$(build_scriptdir)"\" \
-				-DSTORAGEDIR=\""$(storagedir)\"" \
-				-DVPN_STORAGEDIR=\""$(vpn_storagedir)\"" \
-				-DRUNSTATEDIR=\""$(runstatedir)"\" \
-				-DCONFIGDIR=\""$(configdir)\"" \
+				-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+				-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+				-DCONFIGDIR=\""$(configdir)"\" \
 				-I$(builddir)/vpn
 
 endif
@@ -395,11 +398,14 @@ tools_ip6tables_test_SOURCES = $(backtrace_sources) src/log.c src/iptables.c \
 tools_ip6tables_test_LDADD = @GLIB_LIBS@ @XTABLES_LIBS@ -ldl
 
 tools_iptables_unit_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ @XTABLES_CFLAGS@ \
+		-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
 		-DIPTABLES_SAVE=\""${IPTABLES_SAVE}"\" \
+		-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+		-DCONFIGDIR=\""$(testconfigdir)"\"
 		-DIP6TABLES_SAVE=\""${IP6TABLES_SAVE}"\"
 tools_iptables_unit_SOURCES = $(backtrace_sources) src/log.c \
 		src/iptables.c src/firewall-iptables.c src/nat.c \
-		tools/iptables-unit.c
+		src/storage.c tools/iptables-unit.c
 tools_iptables_unit_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ @XTABLES_LIBS@ -ldl
 
