@@ -3,7 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2007-2013  Intel Corporation. All rights reserved.
- *  Copyright (C) 2019  Jolla Ltd. All rights reserved.
+ *  Copyright (C) 2019-2021  Jolla Ltd. All rights reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -121,6 +121,9 @@ int vpn_provider_append_route(struct vpn_provider *provider,
 
 const char *vpn_provider_get_driver_name(struct vpn_provider *provider);
 const char *vpn_provider_get_save_group(struct vpn_provider *provider);
+
+void vpn_provider_unload_providers(char **providers, int len);
+void vpn_provider_load_providers();
 
 const char *vpn_provider_get_name(struct vpn_provider *provider);
 const char *vpn_provider_get_host(struct vpn_provider *provider);
