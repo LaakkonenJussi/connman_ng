@@ -40,12 +40,14 @@ static struct {
 	char *binary_user;
 	char *binary_group;
 	char **binary_supplementary_groups;
+	char *binary_user_override;
 	char **system_binary_users;
 } connman_vpn_settings  = {
 	.timeout_inputreq		= DEFAULT_INPUT_REQUEST_TIMEOUT,
 	.binary_user			= NULL,
 	.binary_group			= NULL,
 	.binary_supplementary_groups	= NULL,
+	.binary_user_override		= NULL,
 	.system_binary_users		= NULL,
 };
 
@@ -71,7 +73,27 @@ const char *__vpn_settings_get_storage_root()
 				DEFAULT_STORAGE_ROOT;
 }
 
-bool vpn_settings_is_system_user(const char *user)
+void __vpn_settings_set_binary_user_override(uid_t uid, void *user_data)
+{
+	struct passwd *pwd;
+
+	if (connman_vpn_settings.binary_user_override) {
+		g_free(connman_vpn_settings.binary_user_override);
+		connman_vpn_settings.binary_user_override = NULL;
+	}
+
+	/* Setting override to root (0) resets the override */
+	if (!uid)
+		return;
+
+	pwd = getpwuid(uid);
+	if (!pwd)
+		return;
+
+	connman_vpn_settings.binary_user_override = g_strdup(pwd->pw_name);
+}
+
+enum vpn_settings_user_type vpn_settings_get_user_type(const char *user)
 {
 	struct passwd *pwd;
 	struct passwd *system_pwd;
@@ -82,33 +104,25 @@ bool vpn_settings_is_system_user(const char *user)
 	 * case after the override is reset.
 	 */
 	if (!user)
-		return true;
+		return VPN_SETTINGS_USER_TYPE_NOT_SET;
 
 	DBG("check user \"%s\"", user);
 
 	/*
-	 * Ignore errors if no entry was found. Treat as system user to
-	 * prevent using an invalid override.
+	 * Ignore errors if no entry was found. When the user cannot be
+	 * resolved user = NOT_FOUND.
 	 */
 	pwd = vpn_util_get_passwd(user);
 	if (!pwd)
-		return true;
+		return VPN_SETTINGS_USER_TYPE_NOT_FOUND;
 
-	if (!connman_vpn_settings.system_binary_users) {
-		DBG("no binary users set");
-
-		/*
-		 * Check if the user is root, or the uid equals to process
-		 * effective uid.
-		 */
-		return !pwd->pw_uid || pwd->pw_uid == geteuid();
-	}
-
-	/* Root set as user or the effective user id */
+	/* Check if the user is root, or the uid equals to process's euid */
 	if (!pwd->pw_uid || pwd->pw_uid == geteuid())
-		return true;
+		return VPN_SETTINGS_USER_TYPE_SYSTEM;
 
-	for (i = 0; connman_vpn_settings.system_binary_users[i]; i++) {
+	for (i = 0; connman_vpn_settings.system_binary_users &&
+				connman_vpn_settings.system_binary_users[i];
+				i++) {
 		const char *system_user =
 				connman_vpn_settings.system_binary_users[i];
 
@@ -117,18 +131,51 @@ bool vpn_settings_is_system_user(const char *user)
 			continue;
 
 		if (pwd->pw_uid == system_pwd->pw_uid)
-			return true;
+			return VPN_SETTINGS_USER_TYPE_SYSTEM;
 	}
 
-	return false;
+	return VPN_SETTINGS_USER_TYPE_REGULAR;
 }
 
 const char *vpn_settings_get_binary_user(struct vpn_plugin_data *data)
 {
-	if (data && data->binary_user)
-		return data->binary_user;
+	enum vpn_settings_user_type user_type;
+	const char *binary_user;
 
-	return connman_vpn_settings.binary_user;
+	if (data && data->binary_user)
+		binary_user = data->binary_user;
+	else
+		binary_user = connman_vpn_settings.binary_user;
+
+	user_type = vpn_settings_get_user_type(binary_user);
+	switch (user_type) {
+	/*
+	 * If the user is not set do not allow to use override as this will
+	 * default to using root user.
+	 */
+	case VPN_SETTINGS_USER_TYPE_NOT_SET:
+		return NULL;
+	/*
+	 * User not found on the system, if no override return NULL. Return
+	 * override if set, otherwise use the binary user in config.
+	 */
+	case VPN_SETTINGS_USER_TYPE_NOT_FOUND:
+		if (!connman_vpn_settings.binary_user_override)
+			return NULL;
+
+		/* fall through */
+	/* Return override user if it is set to override other user */
+	case VPN_SETTINGS_USER_TYPE_REGULAR:
+		if (connman_vpn_settings.binary_user_override)
+			return connman_vpn_settings.binary_user_override;
+
+		break;
+	/* System user cannot be overridden */
+	case VPN_SETTINGS_USER_TYPE_SYSTEM:
+		break;
+	}
+
+	return binary_user;
 }
 
 const char *vpn_settings_get_binary_group(struct vpn_plugin_data *data)
@@ -320,6 +367,7 @@ void __vpn_settings_cleanup()
 	g_free(connman_vpn_settings.binary_group);
 	g_strfreev(connman_vpn_settings.binary_supplementary_groups);
 	g_strfreev(connman_vpn_settings.system_binary_users);
+	g_free(connman_vpn_settings.binary_user_override);
 
 	if (plugin_hash) {
 		g_hash_table_destroy(plugin_hash);
