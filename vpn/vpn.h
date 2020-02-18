@@ -3,6 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2014-2020  Jolla Ltd. All rights reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -124,6 +125,13 @@ int __vpn_settings_init(const char *file);
 void __vpn_settings_cleanup(void);
 GKeyFile *__vpn_settings_load_config(const char *file);
 unsigned int __vpn_settings_get_timeout_inputreq(void);
+
+const char *__vpn_settings_get_fs_identity(void);
+const char *__vpn_settings_get_storage_root(void);
+mode_t __vpn_settings_get_storage_dir_permissions(void);
+mode_t __vpn_settings_get_storage_file_permissions(void);
+mode_t __vpn_settings_get_umask(void);
+void __vpn_settings_set_binary_user_override(const char *username);
 
 struct vpn_plugin_data;
 
