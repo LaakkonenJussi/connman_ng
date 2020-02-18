@@ -1217,6 +1217,22 @@ unsigned int connman_timeout_browser_launch(void)
 	return connman_settings.timeout_browserlaunch;
 }
 
+const char *__connman_setting_get_fallback_device_type(const char *interface)
+{
+	if (!connman_settings.fallback_device_types)
+		return NULL;
+
+	return g_hash_table_lookup(connman_settings.fallback_device_types,
+			interface);
+}
+
+static struct connman_storage_callbacks storage_callbacks = {
+	.pre =		__connman_technology_disable_all,
+	.unload =	__connman_service_unload_services,
+	.load =		__connman_service_load_services,
+	.post =		__connman_technology_enable_from_config,
+};
+
 int main(int argc, char *argv[])
 {
 	GOptionContext *context;
@@ -1292,10 +1308,13 @@ int main(int argc, char *argv[])
 				connman_settings.storage_dir_permissions,
 				connman_settings.storage_file_permissions);
 
-	if (g_mkdir_with_parents(STORAGEDIR,
-			connman_settings.storage_dir_permissions) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create storage directory");
+	if (__connman_storage_create_dir(STORAGEDIR,
+				connman_settings.storage_dir_permissions)) {
+		connman_error("failed to create storage directory");
+	} else {
+		if (__connman_storage_register_dbus(STORAGE_DIR_TYPE_MAIN,
+					&storage_callbacks))
+			connman_error("failed to register storage D-Bus");
 	}
 
 	umask(connman_settings.umask);
