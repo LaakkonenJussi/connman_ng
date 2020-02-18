@@ -10181,6 +10181,159 @@ static struct connman_service *service_get(const char *identifier)
 	return service;
 }
 
+static void service_removed(void *data)
+{
+	struct connman_service *service = data;
+
+	service_schedule_removed(service);
+	connman_service_unref(service);
+}
+
+/* Deduce the security type from the service identifier */
+static enum connman_service_security security_from_ident(const char *ident)
+{
+	const char *str = NULL;
+
+	if (ident) {
+		const char *sep = strrchr(ident, '_');
+
+		if (sep) {
+			str = sep + 1;
+		}
+	}
+
+	return __connman_service_string2security(str);
+}
+
+static struct connman_service *service_new(enum connman_service_type type,
+							const char *ident)
+{
+	struct connman_service *service = connman_service_create();
+
+	service->identifier = g_strdup(ident);
+	service->path = service_path(ident);
+	service->type = type;
+	service->security = security_from_ident(ident);
+	stats_init(service);
+	return service;
+}
+
+static void service_init(struct connman_service *service)
+{
+	/* Autoconnect is confused by the UNKNONW state */
+	service->state = service->state_ipv4 =
+	service->state_ipv6 = CONNMAN_SERVICE_STATE_IDLE;
+
+	/* Stick it into the table. The table holds the reference */
+	g_hash_table_replace(service_hash, service->identifier, service);
+	service_list = g_list_insert_sorted(service_list,
+			connman_service_ref(service), service_compare);
+
+	if (!service->ipconfig_ipv4) {
+		service->ipconfig_ipv4 = create_ip4config(service, -1,
+			CONNMAN_IPCONFIG_METHOD_DHCP);
+		__connman_service_read_ip4config(service);
+	}
+
+	if (!service->ipconfig_ipv6) {
+		service->ipconfig_ipv6 = create_ip6config(service, -1);
+		__connman_service_read_ip6config(service);
+	}
+
+	g_dbus_register_interface(connection, service->path,
+				CONNMAN_SERVICE_INTERFACE, service_methods,
+				service_signals, NULL, service, NULL);
+}
+
+/* Note: config.c requires "service_ident" group in the keyfile */
+const char *__connman_service_create(enum connman_service_type type,
+				const char *ident, GKeyFile *settings)
+{
+	struct connman_service *service = lookup_by_identifier(ident);
+
+	if (service) {
+		/* Apply settings to the existing service */
+		service_apply(service, settings);
+	} else {
+		/* Create a new one */
+		service = service_new(type, ident);
+		service_init(service);
+		service_apply(service, settings);
+		service_schedule_added(service);
+		service_list_sort();
+		__connman_notifier_service_add(service, service->name);
+		__connman_connection_update_gateway();
+		connman_service_unref(service);
+	}
+
+	/*
+	 * service_apply() function sets service->hidden_service rather
+	 * than service->hidden. It's hard to tell the difference between
+	 * those two. In any case, here we need to check the hidden_service
+	 * flag.
+	 */
+	if (service->hidden_service) {
+		/* We need to throw a scan to detect hidden networks */
+		__connman_device_request_scan(type);
+	}
+
+	/* Trigger autoconnect */
+	if (service->autoconnect) {
+		__connman_service_set_favorite(service, true);
+
+		do_auto_connect(service, CONNMAN_SERVICE_CONNECT_REASON_AUTO);
+	}
+
+	/* Save the service */
+	service_set_new_service(service, false);
+	service_save(service);
+	return service->path;
+}
+
+static void load_wifi_service(const char *ident)
+{
+	struct connman_service *service =
+		service_new(CONNMAN_SERVICE_TYPE_WIFI, ident);
+
+	if (service_load(service) == 0) {
+		DBG("service %p path %s", service, service->path);
+		service_init(service);
+		connman_service_unref(service);
+	} else {
+		service_free(service);
+	}
+}
+
+static gboolean load_wifi_services(gpointer unused)
+{
+	char **services = connman_storage_get_services();
+
+	load_wifi_services_id = 0;
+
+	if (services) {
+		int i;
+
+		for (i = 0; services[i]; i++) {
+			const char *ident = services[i];
+			const enum connman_service_type type =
+				__connman_service_string2type(ident);
+
+			DBG("service %d:%s", i, services[i]);
+
+			if (type == CONNMAN_SERVICE_TYPE_WIFI &&
+				!g_hash_table_contains(service_hash, ident))
+				load_wifi_service(ident);
+			else if (g_hash_table_contains(service_hash, ident))
+				DBG("is in hash table, not loaded");
+		}
+
+		g_strfreev(services);
+		service_list_sort();
+	}
+
+	return G_SOURCE_REMOVE;
+}
+
 static int service_register(struct connman_service *service)
 {
 	DBG("service %p", service);
@@ -11013,6 +11166,52 @@ static struct connman_agent_driver agent_driver = {
 	.context_ref	= agent_context_ref,
 	.context_unref	= agent_context_unref,
 };
+
+void __connman_service_unload_services(gchar **services, int len)
+{
+	struct connman_service *service;
+	int i;
+
+	DBG("services %d/%p", len, services);
+
+	if (!services)
+		return;
+
+	for (i = 0; i < len && services[i]; i++) {
+		DBG("service %d:%s", i, services[i]);
+
+		service = connman_service_lookup_from_identifier(services[i]);
+		if (!service) {
+			DBG("no service for %s", services[i]);
+			continue;
+		}
+
+		if (connman_service_get_type(service) !=
+					CONNMAN_SERVICE_TYPE_WIFI) {
+			DBG("skip non WiFi %p/%s", service,
+						service->identifier);
+			continue;
+		}
+
+		__connman_service_remove_from_network(
+				__connman_service_get_network(service));
+
+		if (!__connman_service_remove(service))
+			DBG("cannot unload service %s", services[i]);
+	}
+
+}
+
+void __connman_service_load_services(void)
+{
+	/* Remove previous loading function from main loop if it exists */
+	if (load_wifi_services_id) {
+		g_source_remove(load_wifi_services_id);
+		load_wifi_services_id = 0;
+	}
+
+	load_wifi_services(NULL);
+}
 
 int __connman_service_init(void)
 {
