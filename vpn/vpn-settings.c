@@ -32,7 +32,11 @@
 #include "vpn.h"
 
 #define DEFAULT_INPUT_REQUEST_TIMEOUT 300 * 1000
-#define PLUGIN_CONFIGDIR CONFIGDIR "/vpn-plugin"
+#define DEFAULT_STORAGE_DIR_PERMISSIONS (0700)
+#define DEFAULT_STORAGE_FILE_PERMISSIONS (0600)
+#define DEFAULT_UMASK (0077)
+
+#define PLUGIN_CONFIGDIR "vpn-plugin"
 #define VPN_GROUP "DACPrivileges"
 
 static struct {
@@ -58,6 +62,7 @@ struct vpn_plugin_data {
 };
 
 GHashTable *plugin_hash = NULL;
+static char *configdir = NULL;
 
 const char *vpn_settings_get_state_dir()
 {
@@ -298,7 +303,7 @@ int vpn_settings_parse_vpn_plugin_config(const char *name)
 	if (vpn_settings_get_vpn_plugin_config(name))
 		return -EALREADY;
 
-	file = g_strconcat(PLUGIN_CONFIGDIR, "/", name, ext, NULL);
+	file = g_strconcat(configdir, "/", name, ext, NULL);
 
 	config =  __vpn_settings_load_config(file);
 
@@ -360,9 +365,21 @@ GKeyFile *__vpn_settings_load_config(const char *file)
 	return keyfile;
 }
 
-int __vpn_settings_init(const char *file)
+int __vpn_settings_init(const char *file, const char *dir)
 {
 	GKeyFile *config;
+
+	if (!file || !dir)
+		return -EINVAL;
+
+	connman_vpn_settings.timeout_inputreq = DEFAULT_INPUT_REQUEST_TIMEOUT;
+	connman_vpn_settings.storage_dir_permissions =
+				DEFAULT_STORAGE_DIR_PERMISSIONS;
+	connman_vpn_settings.storage_file_permissions =
+				DEFAULT_STORAGE_FILE_PERMISSIONS;
+	connman_vpn_settings.umask = DEFAULT_UMASK;
+
+	configdir = g_build_filename(dir, PLUGIN_CONFIGDIR, NULL);
 
 	config = __vpn_settings_load_config(file);
 	parse_config(config, file);
@@ -374,11 +391,32 @@ int __vpn_settings_init(const char *file)
 
 void __vpn_settings_cleanup()
 {
+	g_free(connman_vpn_settings.fs_identity);
+	connman_vpn_settings.fs_identity = NULL;
+
+	g_free(connman_vpn_settings.storage_root);
+	connman_vpn_settings.storage_root = NULL;
+
+	g_free(connman_vpn_settings.state_dir);
+	connman_vpn_settings.state_dir = NULL;
+
 	g_free(connman_vpn_settings.binary_user);
+	connman_vpn_settings.binary_user = NULL;
+
 	g_free(connman_vpn_settings.binary_group);
+	connman_vpn_settings.binary_group = NULL;
+
 	g_strfreev(connman_vpn_settings.binary_supplementary_groups);
+	connman_vpn_settings.binary_supplementary_groups = NULL;
+
 	g_strfreev(connman_vpn_settings.system_binary_users);
+	connman_vpn_settings.system_binary_users = NULL;
+
 	g_free(connman_vpn_settings.binary_user_override);
+	connman_vpn_settings.binary_user_override = NULL;
+
+	g_free(configdir);
+	configdir = NULL;
 
 	if (plugin_hash) {
 		g_hash_table_destroy(plugin_hash);
