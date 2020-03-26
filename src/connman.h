@@ -1199,3 +1199,8 @@ void __connman_util_cleanup(void);
 
 int __connman_login_manager_init();
 void __connman_login_manager_cleanup();
+
+#ifdef SYSTEMD_LOGIN
+int __systemd_login_init();
+void __systemd_login_cleanup();
+#endif
