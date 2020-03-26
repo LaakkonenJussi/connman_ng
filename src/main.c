@@ -143,6 +143,7 @@ static struct {
 	char *localtime;
 	bool regdom_follows_timezone;
 	char *resolv_conf;
+	bool enable_login_manager;
 } connman_settings  = {
 	.bg_scan = true,
 	.pref_timeservers = NULL,
@@ -183,6 +184,7 @@ static struct {
 	.use_gateways_as_timeservers = false,
 	.localtime = NULL,
 	.resolv_conf = NULL,
+	.enable_login_manager = false,
 };
 
 #define CONF_BG_SCAN                    "BackgroundScanning"
@@ -224,6 +226,7 @@ static struct {
 #define CONF_LOCALTIME                  "Localtime"
 #define CONF_REGDOM_FOLLOWS_TIMEZONE    "RegdomFollowsTimezone"
 #define CONF_RESOLV_CONF                "ResolvConf"
+#define CONF_ENABLE_LOGIN_MANAGER       "EnableLoginManager"
 
 static const char *supported_options[] = {
 	CONF_BG_SCAN,
@@ -265,6 +268,7 @@ static const char *supported_options[] = {
 	CONF_LOCALTIME,
 	CONF_REGDOM_FOLLOWS_TIMEZONE,
 	CONF_RESOLV_CONF,
+	CONF_ENABLE_LOGIN_MANAGER,
 	NULL
 };
 
@@ -764,6 +768,13 @@ static void parse_config(GKeyFile *config, const char *file)
 
 	g_clear_error(&error);
 
+	boolean = __connman_config_get_bool(config, GENERAL_GROUP,
+				CONF_ENABLE_LOGIN_MANAGER, &error);
+	if (!error)
+		connman_settings.enable_login_manager = boolean;
+
+	g_clear_error(&error);
+
 	/* OnlineCheckIPv6URL */
 
 	string = __connman_config_get_string(config, GENERAL_GROUP,
@@ -1144,6 +1155,9 @@ bool connman_setting_get_bool(const char *key)
 	if (g_str_equal(key, CONF_REGDOM_FOLLOWS_TIMEZONE))
 		return connman_settings.regdom_follows_timezone;
 
+	if (g_str_equal(key, CONF_ENABLE_LOGIN_MANAGER))
+		return connman_settings.enable_login_manager;
+
 	return false;
 }
 
@@ -1319,6 +1333,7 @@ int main(int argc, char *argv[])
 
 	umask(connman_settings.umask);
 
+	__connman_login_manager_init();
 	__connman_util_init();
 	__connman_inotify_init();
 	__connman_technology_init();
@@ -1406,6 +1421,7 @@ int main(int argc, char *argv[])
 	__connman_ipconfig_cleanup();
 	__connman_notifier_cleanup();
 	__connman_technology_cleanup();
+	__connman_login_manager_cleanup();
 	__connman_storage_cleanup();
 	__connman_inotify_cleanup();
 
