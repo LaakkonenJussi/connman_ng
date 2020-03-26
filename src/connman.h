@@ -1182,3 +1182,6 @@ int __connman_util_get_random(uint64_t *val);
 unsigned int __connman_util_random_delay_ms(unsigned int secs);
 int __connman_util_init(void);
 void __connman_util_cleanup(void);
+
+int __connman_login_manager_init();
+void __connman_login_manager_cleanup();
