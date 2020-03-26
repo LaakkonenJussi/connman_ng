@@ -138,6 +138,10 @@ if SYSTEMD_RESOLVED_DNS_BACKEND
 src_connmand_SOURCES += src/dns-systemd-resolved.c
 endif
 
+if SYSTEMD
+src_connmand_SOURCES += src/systemd_login.c
+endif
+
 src_connmand_LDADD = gdbus/libgdbus-internal.la $(builtin_libadd) \
 			@GIO_LIBS@ @GLIB_LIBS@ @DBUS_LIBS@ @GNUTLS_LIBS@ \
 			-lresolv -ldl -lrt
