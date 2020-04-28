@@ -318,7 +318,10 @@ struct connman_storage_callbacks {
 	bool (*post) (void);
 
 	/* Finalize callback is to do additional actions after setup. */
-	void (*finalize) (const char *username);
+	void (*finalize) (uid_t uid, void *user_data);
+
+	/* Additional data to be passed on finalize callback */
+	void *finalize_user_data;
 };
 
 typedef void (*connman_storage_change_user_result_cb_t)(uid_t uid, int err,
