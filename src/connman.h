@@ -322,6 +322,9 @@ struct connman_storage_callbacks {
 
 	/* Additional data to be passed on finalize callback */
 	void *finalize_user_data;
+
+	/* Callback for notifying about user change. */
+	void (*uid_changed) (uid_t uid);
 };
 
 typedef void (*connman_storage_change_user_result_cb_t)(uid_t uid, int err,
