@@ -1245,6 +1245,7 @@ static struct connman_storage_callbacks storage_callbacks = {
 	.unload =	__connman_service_unload_services,
 	.load =		__connman_service_load_services,
 	.post =		__connman_technology_enable_from_config,
+	.uid_changed =	__connman_notifier_storage_uid_changed,
 };
 
 int main(int argc, char *argv[])
