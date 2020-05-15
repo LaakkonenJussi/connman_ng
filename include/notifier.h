@@ -55,6 +55,7 @@ struct connman_notifier {
 	void (*ipconfig_changed) (struct connman_service *service,
 					struct connman_ipconfig *ipconfig);
 	void (*idle_state) (bool idle);
+	void (*storage_uid_changed) (uid_t uid);
 };
 
 int connman_notifier_register(const struct connman_notifier *notifier);
