@@ -368,6 +368,21 @@ void __connman_notifier_ipconfig_changed(struct connman_service *service,
 	}
 }
 
+void __connman_notifier_storage_uid_changed(uid_t uid)
+{
+	GSList *l = notifier_list;
+
+	while (l) {
+		GSList *next = l->next;
+		const struct connman_notifier *notifier = l->data;
+
+		if (notifier->storage_uid_changed)
+			notifier->storage_uid_changed(uid);
+
+		l = next;
+	}
+}
+
 int __connman_notifier_init(void)
 {
 	DBG("");
