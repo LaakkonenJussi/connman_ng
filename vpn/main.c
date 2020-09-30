@@ -282,9 +282,10 @@ unsigned int connman_timeout_input_request(void)
 }
 
 static struct connman_storage_callbacks storage_callbacks = {
-	.load =		vpn_provider_unload_providers,
-	.unload =	vpn_provider_load_providers,
-	.finalize = 	__vpn_settings_set_binary_user_override,
+	.unload =			vpn_provider_unload_providers,
+	.load =				vpn_provider_load_providers,
+	.finalize = 			__vpn_settings_set_binary_user_override,
+	.get_peer_dbus_name =		__vpn_provider_get_connman_dbus_name,
 };
 
 int main(int argc, char *argv[])

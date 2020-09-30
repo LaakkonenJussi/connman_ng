@@ -2144,6 +2144,9 @@ static void change_user_reply(DBusPendingCall *call, void *user_data)
 				g_str_has_suffix(error.name, ".TimedOut")) {
 			DBG("Timeout with D-Bus occurred");
 			err = -ETIMEDOUT;
+		} else if (g_str_has_suffix(error.name, ".NotConnected")) {
+			DBG("D-Bus peering not complete yet, try later");
+			err = -ENOTCONN;
 		} else if (g_str_has_suffix(error.name, ".UnknownMethod") ||
 				g_str_has_suffix(error.name, ".NoReply")) {
 			DBG("vpnd server not available, try later");
@@ -2175,6 +2178,8 @@ static void change_user_reply(DBusPendingCall *call, void *user_data)
 		/* D-Bus was congested, double delay */
 		delay += USER_CHANGE_DELAY;
 	case -ETIMEDOUT:
+		/* fall through */
+	case -ENOTCONN:
 		/* fall through */
 	case -ENONET:
 		if (!init_delayed_user_change(data, delay)) {
@@ -2383,6 +2388,22 @@ static DBusMessage *change_user_vpn(DBusConnection *conn,
 	if (dbus_error_is_set(&error)) {
 		dbus_error_free(&error);
 		return __connman_error_invalid_arguments(msg);
+	}
+
+	if (cbs && cbs->get_peer_dbus_name) {
+		const char *sender = dbus_message_get_sender(msg);
+		const char *connman_dbus_name = cbs->get_peer_dbus_name();
+
+		if (!connman_dbus_name) {
+			connman_warn("D-Bus peer name not established yet");
+			return __connman_error_not_connected(msg);
+		}
+
+		if (g_strcmp0(sender, connman_dbus_name)) {
+			connman_warn("user change from %s, expected %s",
+						sender, connman_dbus_name);
+			return __connman_error_permission_denied(msg);
+		}
 	}
 
 	if ((uid_t)uid == storage.current_uid)
