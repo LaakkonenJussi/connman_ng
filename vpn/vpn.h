@@ -97,6 +97,7 @@ int __vpn_provider_remove(const char *path);
 int __vpn_provider_delete(struct vpn_provider *provider);
 void __vpn_provider_cleanup(void);
 int __vpn_provider_init();
+const char *__vpn_provider_get_connman_dbus_name(void);
 
 #include "vpn-rtnl.h"
 
