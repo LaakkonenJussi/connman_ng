@@ -175,8 +175,7 @@ int vpn_util_create_path(const char *path, uid_t uid, gid_t grp, int mode)
 		if (!g_file_test(dir_p, G_FILE_TEST_IS_DIR))
 			goto out;
 
-		/* Do a chmod as the dir exists */
-		/* fallthrough */
+		/* Fall through to chmod as the dir exists */
 	case -EISDIR:
 		/* Exists as dir, just chmod and change owner */
 		err = g_chmod(dir_p, mode);
