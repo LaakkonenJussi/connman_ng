@@ -41,6 +41,12 @@
 
 static struct {
 	unsigned int timeout_inputreq;
+	char *storage_root;
+	char *state_dir;
+	char *user_storage_dir;
+	mode_t storage_dir_permissions;
+	mode_t storage_file_permissions;
+	mode_t umask;
 	char *binary_user;
 	char *binary_group;
 	char **binary_supplementary_groups;
@@ -48,6 +54,12 @@ static struct {
 	char **system_binary_users;
 } connman_vpn_settings  = {
 	.timeout_inputreq		= DEFAULT_INPUT_REQUEST_TIMEOUT,
+	.storage_root			= NULL,
+	.state_dir			= NULL,
+	.user_storage_dir		= NULL,
+	.storage_dir_permissions	= DEFAULT_STORAGE_DIR_PERMISSIONS,
+	.storage_file_permissions	= DEFAULT_STORAGE_FILE_PERMISSIONS,
+	.umask				= DEFAULT_UMASK,
 	.binary_user			= NULL,
 	.binary_group			= NULL,
 	.binary_supplementary_groups	= NULL,
@@ -78,6 +90,13 @@ const char *__vpn_settings_get_storage_root()
 				DEFAULT_STORAGE_ROOT;
 }
 
+const char *__vpn_settings_get_user_storage_dir()
+{
+	return connman_vpn_settings.user_storage_dir ?
+				connman_vpn_settings.user_storage_dir :
+				DEFAULT_USER_STORAGE;
+}
+
 mode_t __vpn_settings_get_storage_dir_permissions()
 {
 	return connman_vpn_settings.storage_dir_permissions;
@@ -91,70 +110,6 @@ mode_t __vpn_settings_get_storage_file_permissions()
 mode_t __vpn_settings_get_umask()
 {
 	return connman_vpn_settings.umask;
-}
-
-void __vpn_settings_set_binary_user_override(uid_t uid, void *user_data)
-{
-	struct passwd *pwd;
-
-	if (connman_vpn_settings.binary_user_override) {
-		g_free(connman_vpn_settings.binary_user_override);
-		connman_vpn_settings.binary_user_override = NULL;
-	}
-
-	/* Setting override to root (0) resets the override */
-	if (!uid)
-		return;
-
-	pwd = getpwuid(uid);
-	if (!pwd)
-		return;
-
-	connman_vpn_settings.binary_user_override = g_strdup(pwd->pw_name);
-}
-
-enum vpn_settings_user_type vpn_settings_get_user_type(const char *user)
-{
-	struct passwd *pwd;
-	struct passwd *system_pwd;
-	int i;
-
-	/*
-	 * The username is not set = override should not be used. This is the
-	 * case after the override is reset.
-	 */
-	if (!user)
-		return VPN_SETTINGS_USER_TYPE_NOT_SET;
-
-	DBG("check user \"%s\"", user);
-
-	/*
-	 * Ignore errors if no entry was found. When the user cannot be
-	 * resolved user = NOT_FOUND.
-	 */
-	pwd = vpn_util_get_passwd(user);
-	if (!pwd)
-		return VPN_SETTINGS_USER_TYPE_NOT_FOUND;
-
-	/* Check if the user is root, or the uid equals to process's euid */
-	if (!pwd->pw_uid || pwd->pw_uid == geteuid())
-		return VPN_SETTINGS_USER_TYPE_SYSTEM;
-
-	for (i = 0; connman_vpn_settings.system_binary_users &&
-				connman_vpn_settings.system_binary_users[i];
-				i++) {
-		const char *system_user =
-				connman_vpn_settings.system_binary_users[i];
-
-		system_pwd = vpn_util_get_passwd(system_user);
-		if (!system_pwd)
-			continue;
-
-		if (pwd->pw_uid == system_pwd->pw_uid)
-			return VPN_SETTINGS_USER_TYPE_SYSTEM;
-	}
-
-	return VPN_SETTINGS_USER_TYPE_REGULAR;
 }
 
 void __vpn_settings_set_binary_user_override(uid_t uid, void *user_data)
@@ -306,6 +261,29 @@ static char **get_string_list(GKeyFile *config, const char *group,
 	return str;
 }
 
+static gboolean get_perm(GKeyFile *config, const char *group,
+		const char *key, mode_t *perm)
+{
+	gboolean ok = FALSE;
+	char *str = g_key_file_get_string(config, group, key, NULL);
+	if (str) {
+		/*
+		 * Some people are thinking that # is a comment
+		 * anywhere on the line, not just at the beginning
+		 */
+		unsigned long val;
+		char *comment = strchr(str, '#');
+		if (comment) *comment = 0;
+		val = strtoul(g_strstrip(str), NULL, 0);
+		if (val > 0 && !(val & ~0777UL)) {
+			*perm = (mode_t)val;
+			ok = TRUE;
+		}
+		g_free(str);
+	}
+	return ok;
+}
+
 static void parse_config(GKeyFile *config, const char *file)
 {
 	const char *group = "General";
@@ -323,6 +301,19 @@ static void parse_config(GKeyFile *config, const char *file)
 		connman_vpn_settings.timeout_inputreq = timeout * 1000;
 
 	g_clear_error(&error);
+
+	connman_vpn_settings.storage_root =
+		get_string(config, group, "StorageRoot");
+	connman_vpn_settings.state_dir =
+		get_string(config, group, "StateDirectory");
+	connman_vpn_settings.user_storage_dir =
+		get_string(config, group, "UserStorage");
+
+	get_perm(config, group, "StorageDirPermissions",
+			&connman_vpn_settings.storage_dir_permissions);
+	get_perm(config, group, "StorageFilePermissions",
+			&connman_vpn_settings.storage_file_permissions);
+	get_perm(config, group, "Umask", &connman_vpn_settings.umask);
 
 	connman_vpn_settings.binary_user = get_string(config, VPN_GROUP,
 						"User");
@@ -425,10 +416,11 @@ GKeyFile *__vpn_settings_load_config(const char *file)
 								err->message);
 		}
 
-		g_error_free(err);
 		g_key_file_unref(keyfile);
-		return NULL;
+		keyfile = NULL;
 	}
+
+	g_clear_error(&err);
 
 	return keyfile;
 }
@@ -459,11 +451,11 @@ int __vpn_settings_init(const char *file, const char *dir)
 
 void __vpn_settings_cleanup()
 {
-	g_free(connman_vpn_settings.fs_identity);
-	connman_vpn_settings.fs_identity = NULL;
-
 	g_free(connman_vpn_settings.storage_root);
 	connman_vpn_settings.storage_root = NULL;
+
+	g_free(connman_vpn_settings.user_storage_dir);
+	connman_vpn_settings.user_storage_dir = NULL;
 
 	g_free(connman_vpn_settings.state_dir);
 	connman_vpn_settings.state_dir = NULL;
