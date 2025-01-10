@@ -3,6 +3,7 @@
  *  Connection Manager
  *
  *  Copyright (C) 2012  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2025  Jolla Mobile Ltd. All right reserved.
  *
  *
  *  This library is free software; you can redistribute it and/or
@@ -53,3 +54,9 @@ static inline struct cb_data *cb_data_new(void *cb, void *user_data)
 
 void util_iso8601_to_timeval(char *str, struct timeval *time);
 char *util_timeval_to_iso8601(struct timeval *time);
+
+typedef int (*config_callback) (const char *filepath);
+/* Returns -ENOTSUP for non G_FILE_ERROR in error */
+int util_g_file_error_to_errno(GError *error);
+int util_read_config_files_from(const char *path, const char *suffix,
+					GList **conffiles, config_callback cb);
