@@ -3,6 +3,7 @@
  *  Connection Manager
  *
  *  Copyright (C) 2007-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2025  Jolla Mobile Ltd. All right reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -38,6 +39,7 @@
 #include <gdbus.h>
 
 #include "connman.h"
+#include "src/shared/util.h"
 
 #define CONF_ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]) - 1)
 
@@ -68,6 +70,8 @@
 
 #define MAINFILE "main.conf"
 #define CONFIGMAINFILE CONFIGDIR "/" MAINFILE
+#define CONFIGMAINDIR CONFIGMAINFILE ".d"
+#define CONFIGSUFFIX ".conf"
 
 #define GENERAL_GROUP "General"
 
@@ -1229,6 +1233,7 @@ int main(int argc, char *argv[])
 	DBusConnection *conn;
 	DBusError err;
 	guint signal;
+	int fs_err;
 
 	context = g_option_context_new(NULL);
 	g_option_context_add_main_entries(context, options, NULL);
@@ -1291,6 +1296,12 @@ int main(int argc, char *argv[])
 		config_init(CONFIGMAINFILE);
 	else
 		config_init(option_config);
+
+	fs_err = util_read_config_files_from(CONFIGMAINDIR, CONFIGSUFFIX,
+				NULL, config_init);
+	if (fs_err && fs_err != -ENOTDIR)
+		connman_error("failed to read configs from %s: %s",
+				CONFIGMAINDIR, strerror(fs_err));
 
 	__connman_util_init();
 	__connman_inotify_init();
