@@ -3,6 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2025  Jolla Mobile Ltd. All right reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -250,9 +251,9 @@ int main(int argc, char *argv[])
 	__connman_dbus_init(conn);
 
 	if (!option_config)
-		__vpn_settings_init(CONFIGMAINFILE);
+		__vpn_settings_init(CONFIGMAINFILE, CONFIGDIR);
 	else
-		__vpn_settings_init(option_config);
+		__vpn_settings_init(option_config, CONFIGDIR);
 
 	__connman_inotify_init();
 	__connman_agent_init();
