@@ -130,7 +130,7 @@ src_connmand_SOURCES = $(gdhcp_sources) $(gweb_sources) $(stats_sources) \
 			src/6to4.c src/ippool.c src/bridge.c src/nat.c \
 			src/ipaddress.c src/inotify.c src/ipv6pd.c src/peer.c \
 			src/peer_service.c src/machine.c src/util.c \
-			src/acd.c
+			src/acd.c src/setting.c
 
 if INTERNAL_DNS_BACKEND
 src_connmand_SOURCES += src/dnsproxy.c
