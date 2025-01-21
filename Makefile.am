@@ -476,6 +476,15 @@ tools_dnsproxy_standalone_LDFLAGS = $(src_connmand_LDFLAGS) -Wl,-zmuldefs
 noinst_PROGRAMS += tools/dnsproxy-standalone
 endif
 
+noinst_PROGRAMS += unit/test-setting
+
+unit_test_setting_CFLAGS = $(COVERAGE_OPT) $(AM_CFLAGS)
+unit_test_setting_SOURCES = unit/test-setting.c $(backtrace_sources) \
+				src/connman.h src/log.c src/setting.c src/config.c
+unit_test_setting_LDADD = @GLIB_LIBS@ -ldl
+
+TESTS += unit/test-setting
+
 endif
 
 EXTRA_DIST += $(test_scripts)
