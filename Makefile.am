@@ -54,7 +54,8 @@ stats_sources = src/nostats.c
 endif
 
 shared_sources = src/shared/util.h src/shared/util.c \
-		src/shared/arp.h src/shared/arp.c
+		src/shared/arp.h src/shared/arp.c src/shared/dns.h \
+		src/shared/dns.c
 
 if DATAFILES
 
@@ -440,7 +441,7 @@ test_SCRIPTS = $(test_scripts)
 
 if INTERNAL_DNS_BACKEND
 tools_dnsproxy_standalone_CFLAGS = $(src_connmand_CFLAGS) -I$(srcdir)/src -DDNSPROXY_DEBUG
-tools_dnsproxy_standalone_SOURCES = tools/dnsproxy-standalone.c $(src_connmand_SOURCES)
+tools_dnsproxy_standalone_SOURCES = tools/dnsproxy-standalone.c $(src_connmand_SOURCES) $(shared_sources)
 # for EXTRA_PROGRAMS the BUILT_SOURCES aren't automatically added as
 # dependency, so let's do it explicitly
 tools/dnsproxy-standalone.c: $(BUILT_SOURCES)
