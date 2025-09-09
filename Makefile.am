@@ -246,6 +246,12 @@ AM_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DRUNSTATEDIR=\""$(runstatedir)"\" \
 				-DCONFIGDIR=\""$(configdir)\""
 
+if SYSTEMD_RESOLVED_DNS_BACKEND
+AM_CFLAGS += -DSYSTEMD_RESOLVED_DNS_BACKEND -DDNS_BACKEND_V4=\""127.0.0.53"\"
+else
+AM_CFLAGS += -DDNS_BACKEND_V4=\""127.0.0.1"\" -DDNS_BACKEND_V6=\""::1"\"
+endif
+
 if VPN
 AM_CPPFLAGS = -I$(builddir)/include -I$(srcdir)/gdbus
 else
@@ -263,6 +269,14 @@ src_connmand_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DCONFIGDIR=\""$(configdir)\"" \
 				-I$(builddir)/src
 
+if SYSTEMD_RESOLVED_DNS_BACKEND
+src_connmand_CFLAGS += -DSYSTEMD_RESOLVED_DNS_BACKEND \
+				-DDNS_BACKEND_V4=\""127.0.0.53"\"
+else
+src_connmand_CFLAGS += -DDNS_BACKEND_V4=\""127.0.0.1"\" \
+				-DDNS_BACKEND_V6=\""::1"\"
+endif
+
 EXTRA_DIST = src/genbuiltin src/connman-dbus.conf src/connman-polkit.conf \
 				plugins/connman-nmcompat.conf \
 				$(service_files_sources) scripts/connman.in
@@ -279,6 +293,14 @@ vpn_connman_vpnd_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DRUNSTATEDIR=\""$(runstatedir)"\" \
 				-DCONFIGDIR=\""$(configdir)\"" \
 				-I$(builddir)/vpn
+
+if SYSTEMD_RESOLVED_DNS_BACKEND
+vpn_connman_vpnd_CFLAGS += -DSYSTEMD_RESOLVED_DNS_BACKEND \
+				-DDNS_BACKEND_V4=\""127.0.0.53"\"
+else
+vpn_connman_vpnd_CFLAGS += -DDNS_BACKEND_V4=\""127.0.0.1"\" \
+				-DDNS_BACKEND_V6=\""::1"\"
+endif
 
 endif
 
