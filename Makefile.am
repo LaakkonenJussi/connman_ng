@@ -5,28 +5,25 @@ ACLOCAL_AMFLAGS = -I build-aux
 
 noinst_LTLIBRARIES =
 
-includedir = @includedir@/connman
-
-include_HEADERS = include/log.h include/plugin.h \
+noinst_HEADERS = include/log.h include/plugin.h \
 			include/notifier.h include/service.h \
 			include/resolver.h include/ipconfig.h \
 			include/device.h include/network.h include/inet.h \
 			include/storage.h include/provision.h \
 			include/session.h include/ipaddress.h include/agent.h \
 			include/inotify.h include/peer.h include/machine.h \
-			include/acd.h include/tethering.h
-
-nodist_include_HEADERS = include/version.h
-
-noinst_HEADERS = include/rtnl.h include/task.h \
+			include/acd.h include/tethering.h \
+			include/rtnl.h include/task.h \
 			include/dbus.h \
 			include/provider.h include/vpn-dbus.h \
 			include/utsname.h include/timeserver.h include/proxy.h \
 			include/technology.h include/setting.h \
 			include/backtrace.h
 
-local_headers = $(foreach file,$(include_HEADERS) $(nodist_include_HEADERS) \
-			$(noinst_HEADERS), include/connman/$(notdir $(file)))
+nodist_noinst_HEADERS = include/version.h
+
+local_headers = $(foreach file,$(noinst_HEADERS) $(nodist_noinst_HEADERS), \
+					include/connman/$(notdir $(file)))
 
 
 noinst_LTLIBRARIES += gdbus/libgdbus-internal.la
