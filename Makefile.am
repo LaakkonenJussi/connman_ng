@@ -327,7 +327,7 @@ unit_test_ippool_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ -ldl
 
 LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
-			$(top_srcdir)/tap-driver.sh
+			$(top_srcdir)/build-aux/tap-driver.sh
 
 TESTS = unit/test-ippool
 
