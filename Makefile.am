@@ -1,6 +1,8 @@
 
 AM_MAKEFLAGS = --no-print-directory
 
+ACLOCAL_AMFLAGS = -I build-aux
+
 noinst_LTLIBRARIES =
 
 includedir = @includedir@/connman
@@ -587,6 +589,9 @@ include/connman/version.h: include/version.h
 include/connman/%.h: $(abs_top_srcdir)/include/%.h
 	$(AM_V_at)$(MKDIR_P) include/connman
 	$(AM_V_GEN)$(LN_S) $< $@
+
+maintainer-clean-local:
+	-rm -rf build-aux
 
 clean-local:
 	@$(RM) -rf include/connman $(MANUAL_PAGES)

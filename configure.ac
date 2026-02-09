@@ -1,12 +1,14 @@
 AC_PREREQ([2.69])
 AC_INIT([connman], [1.45])
 
+AC_CONFIG_HEADERS(config.h)
+AC_CONFIG_AUX_DIR(build-aux)
+AC_CONFIG_MACRO_DIR(build-aux)
+
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
 
-AC_CONFIG_MACRO_DIR([m4])
-
-AM_INIT_AUTOMAKE([foreign subdir-objects color-tests])
-AC_CONFIG_HEADERS([config.h])
+AM_INIT_AUTOMAKE([foreign subdir-objects color-tests silent-rules
+					tar-pax no-dist-gzip dist-xz])
 
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
