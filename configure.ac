@@ -550,5 +550,5 @@ AM_CONDITIONAL(INTERNAL_DNS_BACKEND, test "${dns_backend}" = "internal")
 AM_CONDITIONAL(SYSTEMD_RESOLVED_DNS_BACKEND, test "${dns_backend}" = "systemd-resolved")
 AC_MSG_RESULT(${dns_backend})
 
-AC_CONFIG_FILES(Makefile include/version.h connman.pc)
+AC_CONFIG_FILES(Makefile include/version.h)
 AC_OUTPUT

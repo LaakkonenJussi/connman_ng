@@ -487,10 +487,6 @@ MANUAL_PAGES += doc/connmanctl.1 doc/connman.conf.5 \
 
 nodist_man_MANS = $(MANUAL_PAGES)
 
-pkgconfigdir = $(libdir)/pkgconfig
-
-pkgconfig_DATA = connman.pc
-
 DISTCHECK_CONFIGURE_FLAGS = --disable-datafiles \
 				--enable-hh2serial-gps \
 				--enable-openconnect \
@@ -499,8 +495,6 @@ DISTCHECK_CONFIGURE_FLAGS = --disable-datafiles \
 				--enable-session-policy-local \
 				--enable-nmcompat \
 				--enable-polkit
-
-DISTCLEANFILES = $(pkgconfig_DATA)
 
 MAINTAINERCLEANFILES = Makefile.in \
 	aclocal.m4 configure config.h.in config.sub config.guess tap-driver.sh \
