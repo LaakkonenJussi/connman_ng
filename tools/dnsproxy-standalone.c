@@ -6,6 +6,7 @@
 
 #include <glib.h>
 
+#include "../src/shared/dns.h"
 #include "connman.h"
 
 /*
