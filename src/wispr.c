@@ -142,8 +142,8 @@ static bool wispr_portal_web_result(const GError *error, GWebResult *result, gpo
  */
 static GHashTable *wispr_portal_hash = NULL;
 
-static char *online_check_ipv4_url = NULL;
-static char *online_check_ipv6_url = NULL;
+static const char *online_check_ipv4_url = NULL;
+static const char *online_check_ipv6_url = NULL;
 
 static const struct wispr_portal_context_route_ops
 	ipv4_wispr_portal_context_route_ops = {
