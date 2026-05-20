@@ -136,6 +136,7 @@ static struct {
 	char *localtime;
 	bool regdom_follows_timezone;
 	char *resolv_conf;
+	GHashTable *fallback_device_types;
 } connman_settings  = {
 	.bg_scan = true,
 	.pref_timeservers = NULL,
@@ -173,6 +174,7 @@ static struct {
 	.use_gateways_as_timeservers = false,
 	.localtime = NULL,
 	.resolv_conf = NULL,
+	.fallback_device_types = NULL,
 };
 
 #define CONF_BG_SCAN                    "BackgroundScanning"
@@ -210,6 +212,7 @@ static struct {
 #define CONF_LOCALTIME                  "Localtime"
 #define CONF_REGDOM_FOLLOWS_TIMEZONE    "RegdomFollowsTimezone"
 #define CONF_RESOLV_CONF                "ResolvConf"
+#define CONF_FALLBACK_DEVICE_TYPES      "FallbackDeviceTypes"
 
 static const char *supported_options[] = {
 	CONF_BG_SCAN,
@@ -247,6 +250,7 @@ static const char *supported_options[] = {
 	CONF_LOCALTIME,
 	CONF_REGDOM_FOLLOWS_TIMEZONE,
 	CONF_RESOLV_CONF,
+	CONF_FALLBACK_DEVICE_TYPES,
 	NULL
 };
 
@@ -320,6 +324,39 @@ static char **parse_fallback_nameservers(char **nameservers, gsize len)
 	}
 
 	return servers;
+}
+
+static GHashTable *parse_fallback_device_types(char **devtypes, gsize len)
+{
+	GHashTable *h;
+
+	h = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	for (gsize i = 0; i < len; ++i) {
+		char **v;
+
+		v = g_strsplit(devtypes[i], ":", 2);
+		if (!v)
+			continue;
+
+		if (v[0] && v[1]) {
+			if (__connman_device_string2type(v[1]) ==
+						CONNMAN_DEVICE_TYPE_UNKNOWN)
+				connman_warn("Invalid FallbackDeviceType in %s",
+								devtypes[i]);
+			else
+				g_hash_table_replace(h, g_strdup(v[0]),
+								g_strdup(v[1]));
+		}
+
+		g_strfreev(v);
+	}
+
+	if (g_hash_table_size(h) > 0)
+		return h;
+
+	g_hash_table_unref(h);
+	return NULL;
 }
 
 static void check_config(GKeyFile *config, const char *file)
@@ -851,6 +888,17 @@ static void parse_config(GKeyFile *config, const char *file)
 	g_clear_error(&error);
 
 	online_check_settings_log();
+
+	str_list = __connman_config_get_string_list(config, GENERAL_GROUP,
+			CONF_FALLBACK_DEVICE_TYPES, &len, &error);
+
+	if (!error)
+		connman_settings.fallback_device_types =
+				parse_fallback_device_types(str_list, len);
+
+	g_strfreev(str_list);
+
+	g_clear_error(&error);
 }
 
 static int config_init(const char *file)
@@ -1165,6 +1213,15 @@ unsigned int connman_timeout_browser_launch(void)
 	return connman_settings.timeout_browserlaunch;
 }
 
+const char *__connman_setting_get_fallback_device_type(const char *interface)
+{
+	if (!connman_settings.fallback_device_types)
+		return NULL;
+
+	return g_hash_table_lookup(connman_settings.fallback_device_types,
+			interface);
+}
+
 int main(int argc, char *argv[])
 {
 	GOptionContext *context;
@@ -1346,6 +1403,9 @@ int main(int argc, char *argv[])
 	g_free(connman_settings.online_check_ipv4_url);
 	g_free(connman_settings.online_check_ipv6_url);
 	g_free(connman_settings.localtime);
+
+	if (connman_settings.fallback_device_types)
+		g_hash_table_unref(connman_settings.fallback_device_types);
 
 	g_free(option_debug);
 	g_free(option_wifi);

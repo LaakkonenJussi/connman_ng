@@ -149,6 +149,8 @@ void __connman_log_enable(struct connman_debug_desc *start,
 
 #include <connman/setting.h>
 
+const char *__connman_setting_get_fallback_device_type(const char *interface);
+
 #include <connman/plugin.h>
 
 int __connman_plugin_init(const char *pattern, const char *exclude);
@@ -605,6 +607,7 @@ void __connman_device_cleanup(void);
 
 void __connman_device_list(DBusMessageIter *iter, void *user_data);
 
+enum connman_device_type __connman_device_string2type(const char *str);
 enum connman_service_type __connman_device_get_service_type(struct connman_device *device);
 struct connman_device *__connman_device_find_device(enum connman_service_type type);
 int __connman_device_request_scan(enum connman_service_type type);
