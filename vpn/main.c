@@ -3,6 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2025  Jolla Mobile Ltd. All right reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -41,8 +42,11 @@
 #include "vpn.h"
 
 #include "connman/vpn-dbus.h"
+#include "src/shared/util.h"
 
 #define CONFIGMAINFILE CONFIGDIR "/connman-vpn.conf"
+#define CONFIGMAINDIR CONFIGMAINFILE ".d"
+#define CONFIGSUFFIX ".conf"
 
 static GMainLoop *main_loop = NULL;
 
@@ -176,6 +180,7 @@ int main(int argc, char *argv[])
 	DBusConnection *conn;
 	DBusError err;
 	guint signal;
+	int conf_err;
 
 	context = g_option_context_new(NULL);
 	g_option_context_add_main_entries(context, options, NULL);
@@ -250,9 +255,15 @@ int main(int argc, char *argv[])
 	__connman_dbus_init(conn);
 
 	if (!option_config)
-		__vpn_settings_init(CONFIGMAINFILE);
+		__vpn_settings_init(CONFIGMAINFILE, CONFIGDIR);
 	else
-		__vpn_settings_init(option_config);
+		__vpn_settings_init(option_config, CONFIGDIR);
+
+	conf_err = util_read_config_files_from(CONFIGMAINDIR, CONFIGSUFFIX,
+			NULL, __vpn_settings_process_config);
+	if (conf_err && conf_err != -ENOTDIR)
+		connman_error("failed to read configs from %s: %s",
+				CONFIGMAINDIR, strerror(conf_err));
 
 	__connman_inotify_init();
 	__connman_agent_init();

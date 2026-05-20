@@ -3,6 +3,7 @@
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
  *  Copyright (C) 2018-2020 Jolla Ltd. All rights reserved.
+ *  Copyright (C) 2025  Jolla Mobile Ltd. All right reserved.
  *  Contact: jussi.laakkonen@jolla.com
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -41,13 +42,7 @@ static struct {
 	char *binary_group;
 	char **binary_supplementary_groups;
 	char **system_binary_users;
-} connman_vpn_settings  = {
-	.timeout_inputreq		= DEFAULT_INPUT_REQUEST_TIMEOUT,
-	.binary_user			= NULL,
-	.binary_group			= NULL,
-	.binary_supplementary_groups	= NULL,
-	.system_binary_users		= NULL,
-};
+} connman_vpn_settings = { 0 };
 
 struct vpn_plugin_data {
 	char *binary_user;
@@ -56,6 +51,7 @@ struct vpn_plugin_data {
 };
 
 GHashTable *plugin_hash = NULL;
+static char *configdir = NULL;
 
 bool vpn_settings_is_system_user(const char *user)
 {
@@ -164,6 +160,8 @@ static char **get_string_list(GKeyFile *config, const char *group,
 static void parse_config(GKeyFile *config, const char *file)
 {
 	const char *group = "General";
+	char **str_list = NULL;
+	char *str = NULL;
 	GError *error = NULL;
 	int timeout;
 
@@ -179,16 +177,29 @@ static void parse_config(GKeyFile *config, const char *file)
 
 	g_clear_error(&error);
 
-	connman_vpn_settings.binary_user = get_string(config, VPN_GROUP,
-						"User");
-	connman_vpn_settings.binary_group = get_string(config, VPN_GROUP,
-						"Group");
-	connman_vpn_settings.binary_supplementary_groups = get_string_list(
-						config, VPN_GROUP,
-						"SupplementaryGroups");
-	connman_vpn_settings.system_binary_users = get_string_list(
-						config, VPN_GROUP,
-						"SystemBinaryUsers");
+	str = get_string(config, VPN_GROUP, "User");
+	if (str) {
+		g_free(connman_vpn_settings.binary_user);
+		connman_vpn_settings.binary_user = str;
+	}
+
+	str = get_string(config, VPN_GROUP, "Group");
+	if (str) {
+		g_free(connman_vpn_settings.binary_group);
+		connman_vpn_settings.binary_group = str;
+	}
+
+	str_list = get_string_list(config, VPN_GROUP, "SupplementaryGroups");
+	if (str_list) {
+		g_strfreev(connman_vpn_settings.binary_supplementary_groups);
+		connman_vpn_settings.binary_supplementary_groups = str_list;
+	}
+
+	str_list = get_string_list(config, VPN_GROUP, "SystemBinaryUsers");
+	if (str_list) {
+		g_strfreev(connman_vpn_settings.system_binary_users);
+		connman_vpn_settings.system_binary_users = str_list;
+	}
 }
 
 struct vpn_plugin_data *vpn_settings_get_vpn_plugin_config(const char *name)
@@ -275,29 +286,48 @@ GKeyFile *__vpn_settings_load_config(const char *file)
 	g_key_file_set_list_separator(keyfile, ',');
 
 	if (!g_key_file_load_from_file(keyfile, file, 0, &err)) {
-		if (err->code != G_FILE_ERROR_NOENT) {
+		if (err->code != G_FILE_ERROR_NOENT)
 			connman_error("Parsing %s failed: %s", file,
 								err->message);
-		}
 
-		g_error_free(err);
 		g_key_file_unref(keyfile);
-		return NULL;
+		keyfile = NULL;
 	}
+
+	g_clear_error(&err);
 
 	return keyfile;
 }
 
-int __vpn_settings_init(const char *file)
+int __vpn_settings_process_config(const char *configfile)
 {
 	GKeyFile *config;
 
-	config = __vpn_settings_load_config(file);
-	parse_config(config, file);
-	if (config)
+	if (!configfile)
+		return -EINVAL;
+
+	DBG("%s", configfile);
+
+	config = __vpn_settings_load_config(configfile);
+	if (config) {
+		parse_config(config, configfile);
 		g_key_file_unref(config);
+	}
 
 	return 0;
+}
+
+int __vpn_settings_init(const char *file, const char *dir)
+{
+	if (!file || !dir)
+		return -EINVAL;
+
+	memset(&connman_vpn_settings, 0, sizeof(connman_vpn_settings));
+	connman_vpn_settings.timeout_inputreq = DEFAULT_INPUT_REQUEST_TIMEOUT;
+
+	configdir = g_build_filename(dir, PLUGIN_CONFIGDIR, NULL);
+
+	return __vpn_settings_process_config(file);
 }
 
 void __vpn_settings_cleanup()
@@ -306,6 +336,9 @@ void __vpn_settings_cleanup()
 	g_free(connman_vpn_settings.binary_group);
 	g_strfreev(connman_vpn_settings.binary_supplementary_groups);
 	g_strfreev(connman_vpn_settings.system_binary_users);
+
+	g_free(configdir);
+	configdir = NULL;
 
 	if (plugin_hash) {
 		g_hash_table_destroy(plugin_hash);
