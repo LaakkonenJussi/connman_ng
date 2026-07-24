@@ -97,46 +97,6 @@ static char *default_blacklist[] = {
 	NULL
 };
 
-enum option_val {
-	CONF_BG_SCAN_VAL = 0,
-	CONF_PREF_TIMESERVERS_VAL,
-	CONF_AUTO_CONNECT_TECHS_VAL,
-	CONF_ENABLED_TECHS_VAL,
-	CONF_FAVORITE_TECHS_VAL,
-	CONF_ALWAYS_CONNECTED_TECHS_VAL,
-	CONF_PREFERRED_TECHS_VAL,
-	CONF_FALLBACK_NAMESERVERS_VAL,
-	CONF_TIMEOUT_INPUTREQ_VAL,
-	CONF_TIMEOUT_BROWSERLAUNCH_VAL,
-	CONF_BLACKLISTED_INTERFACES_VAL,
-	CONF_ALLOW_HOSTNAME_UPDATES_VAL,
-	CONF_ALLOW_DOMAINNAME_UPDATES_VAL,
-	CONF_SINGLE_TECH_VAL,
-	CONF_TETHERING_TECHNOLOGIES_VAL,
-	CONF_PERSISTENT_TETHERING_MODE_VAL,
-	CONF_ENABLE_6TO4_VAL,
-	CONF_VENDOR_CLASS_ID_VAL,
-	CONF_ENABLE_ONLINE_CHECK_VAL,
-	CONF_ENABLE_ONLINE_TO_READY_TRANSITION_VAL,
-	CONF_ONLINE_CHECK_MODE_VAL,
-	CONF_ONLINE_CHECK_IPV4_URL_VAL,
-	CONF_ONLINE_CHECK_IPV6_URL_VAL,
-	CONF_ONLINE_CHECK_CONNECT_TIMEOUT_VAL,
-	CONF_ONLINE_CHECK_INITIAL_INTERVAL_VAL,
-	CONF_ONLINE_CHECK_MAX_INTERVAL_VAL,
-	CONF_ONLINE_CHECK_FAILURES_THRESHOLD_VAL,
-	CONF_ONLINE_CHECK_SUCCESSES_THRESHOLD_VAL,
-	CONF_ONLINE_CHECK_INTERVAL_STYLE_VAL,
-	CONF_AUTO_CONNECT_ROAMING_SERVICES_VAL,
-	CONF_ACD_VAL,
-	CONF_USE_GATEWAYS_AS_TIMESERVERS_VAL,
-	CONF_LOCALTIME_VAL,
-	CONF_REGDOM_FOLLOWS_TIMEZONE_VAL,
-	CONF_RESOLV_CONF_VAL,
-	CONF_FALLBACK_DEVICE_TYPES_VAL,
-	CONF_OPTION_WIFI_VAL,
-};
-
 enum option_type {
 	CONF_TYPE_UINT = 0,
 	CONF_TYPE_UINTARR,
@@ -154,27 +114,31 @@ union config_value {
 	double double_val;
 	char *str_val;
 	char **str_array_val;
-	unsigned int *int_array_val;
+	unsigned int *uint_array_val;
 	GHashTable *hash_table_val;
 };
 
 /* Callback for checking if value is acceptable */
-typedef gboolean (*value_check_callback)(const char *value);
+typedef gboolean (*parse_str_callback)(const char *value);
 
 /* Callback for parsing items in a string list */
-typedef char** (*parse_callback)(char **str_list, gsize *len);
+typedef char** (*parse_list_callback)(char **str_list, gsize *len);
 
 /* Callback for parsing uint list from the NULL terminated string list */
-typedef uint* (*parse_list_uint_callback)(char **list, gsize len);
-
-/* Callback for parsing the string to add the values separately to an option. */
-typedef void (*parse_list_item_callback) (const char *value);
+typedef uint* (*parse_uint_list_callback)(char **list, gsize len);
 
 /* Callback for parsing string list into hashtable. */
 typedef GHashTable* (*parse_hashtable_callback)(char **list, gsize len);
 
 /* Error callback */
 typedef int (*error_callback)(void);
+
+union parse_callback {
+	parse_str_callback parse_str_cb;
+	parse_list_callback parse_list_cb;
+	parse_uint_list_callback parse_uint_list_cb;
+	parse_hashtable_callback parse_hashtable_cb;
+};
 
 /*
  * Configuration options struct.
@@ -184,21 +148,19 @@ typedef int (*error_callback)(void);
  *
  * opt_key		Option name, used for searching in getters
  * opt_value		enum value for the option
- * opt_type		Option type, see enum option_type
  * opt_return_type	The type of this option returns, supported: str -> uint
  * default_val		Default value as union option, must match opt_type
- * check_str_cb		Callback for checking string value: CONF_TYPE_STR
- * parse_list_strs_cb	Callback for parsing a string list: CONF_TYPE_STRARR
- * parse_list_uint_cb	Callback for parsing int list: CONF_TYPE_UINTARR
- * parse_list_item_cb	Callback to handle of strings separate: CONF_TYPE_STRARR
- * parse_hashtable_cb	Callback for parsing a hash table: CONF_TYPE_HASHTABLE
+ * parser		Union for parser callbacks, contains:
+ * 	parse_str_cb		Check string value: CONF_TYPE_STR
+ * 	parse_list_cb		Parse a string list: CONF_TYPE_STRARR
+ * 	parse_uint_list_cb	Parse int list: CONF_TYPE_UINTARR
+ * 	parse_hashtable_cb	Parse a hash table: CONF_TYPE_HASHTABLE
  * error_cb		Error callback when check_str_cb fails
  * multiplier		For CONF_TYPE_UINT and CONF_TYPE_DOUBLE correlation
  *
- * If both parse_list_strs_cb and parse_list_item_cb are missing the string list
- * is saved as is to configuration. The special case of parse_list_item_cb
- * handling is to not to create a string list but to handle items separately,
- * for example, using different concatenation to form a one value.
+ * If parse_str_cb is missing the string is saved as is. If parse_list_strs_cb
+ * is missing the string list is saved as is. If any of the other parser
+ * callbacks is missing the value will not be saved.
  *
  * The alternative return type, opt_return_type, can be used to define a
  * conversion type value for a string. Currently accepted conversions are STR ->
@@ -217,7 +179,6 @@ typedef int (*error_callback)(void);
  */
 struct config_option {
 	const char *opt_key;			/* Config option name */
-	enum option_val opt_value;		/* Enum identifier */
 	enum option_type opt_type;		/* Define valid union field */
 	/* Special handling, read as opt_type, return with this union type */
 	enum option_type opt_return_type;
@@ -226,11 +187,8 @@ struct config_option {
 	union config_value default_val;
 	union config_value current_val;
 
-	value_check_callback check_str_cb;
-	parse_callback parse_list_strs_cb;
-	parse_list_uint_callback parse_list_uint_cb;
-	parse_list_item_callback parse_list_item_cb;
-	parse_hashtable_callback parse_hashtable_cb;
+	/* Callbacks, parsers are set in union for a type, or NULL if omitted */
+	union parse_callback parser;
 	error_callback error_cb;
 	unsigned int multiplier;		/* For integers/doubles*/
 };
@@ -261,6 +219,11 @@ static uint *parse_service_types(char **str_list, gsize len)
 		i += 1;
 	}
 
+	if (!j) {
+		g_free(type_list);
+		return NULL;
+	}
+
 	type_list[j] = CONNMAN_SERVICE_TYPE_UNKNOWN;
 
 	return type_list;
@@ -283,6 +246,12 @@ static char **parse_fallback_nameservers(char **nameservers, gsize *len)
 			j += 1;
 		}
 		i += 1;
+	}
+
+	if (!j) {
+		g_strfreev(servers);
+		*len = 0;
+		return NULL;
 	}
 
 	*len = j + 1;
@@ -365,7 +334,11 @@ const char *connman_setting_get_string(const char *key)
 	struct config_option *opt;
 
 	opt = config_option_lookup(key);
-	if (!opt || opt->opt_type != CONF_TYPE_STR)
+	if (!opt)
+		return NULL;
+
+	if (opt->opt_type != CONF_TYPE_STR &&
+					opt->opt_return_type != CONF_TYPE_STR)
 		return NULL;
 
 	if (opt->current_val.str_val)
@@ -396,10 +369,10 @@ unsigned int *connman_setting_get_uint_list(const char *key)
 	if (!opt || opt->opt_type != CONF_TYPE_UINTARR)
 		return NULL;
 
-	if (opt->current_val.int_array_val)
-		return opt->current_val.int_array_val;
+	if (opt->current_val.uint_array_val)
+		return opt->current_val.uint_array_val;
 
-	return opt->default_val.int_array_val;
+	return opt->default_val.uint_array_val;
 }
 
 /* Wrappers for input request/browser launch timeout getters */
@@ -431,22 +404,19 @@ static void set_uint_value(struct config_option *opt, unsigned int value)
 	opt->current_val.uint_val = value;
 }
 
-static void set_str_value(struct config_option *opt, char *value,
-						value_check_callback check_str_cb)
+static void set_str_value(struct config_option *opt, const char *value)
 {
 	if (opt->opt_type != CONF_TYPE_STR)
 		return;
 
-	if (check_str_cb && !check_str_cb(value)) {
-		g_free(value);
+	if (opt->parser.parse_str_cb && !opt->parser.parse_str_cb(value))
 		return;
-	}
 
 	if (!g_strcmp0(opt->current_val.str_val, value))
 		return;
 
 	g_free(opt->current_val.str_val);
-	opt->current_val.str_val = value;
+	opt->current_val.str_val = g_strdup(value);
 }
 
 static void set_str_array_value(struct config_option *opt, char **value)
@@ -455,35 +425,22 @@ static void set_str_array_value(struct config_option *opt, char **value)
 		return;
 
 	g_strfreev(opt->current_val.str_array_val);
-	opt->current_val.str_array_val = value;
+	opt->current_val.str_array_val = g_strdupv(value);
 }
 
-/* For setting a value individually with a callback to a specific option */
-static void set_str_array_value_cb(struct config_option *opt, char **value,
-						parse_list_item_callback cb,
-						gsize len, bool append)
+static void set_uint_array_value(struct config_option *opt,
+				const unsigned int *value, gsize len)
 {
-	int i;
+	gsize size;
 
-	if (opt->opt_type != CONF_TYPE_STRARR)
-		return;
-
-	if (append) {
-		/* TODO */
-		connman_warn("set_str_array_value_cb() append is ENOTSUP");
-	}
-
-	for (i = 0; i < len; i++)
-		cb(value[i]);
-}
-
-static void set_int_array_value(struct config_option *opt, unsigned int *value)
-{
 	if (opt->opt_type != CONF_TYPE_UINTARR)
 		return;
 
-	g_free(opt->current_val.int_array_val);
-	opt->current_val.int_array_val = value;
+	g_free(opt->current_val.uint_array_val);
+
+	/* Take account the terminating 0 value in the array */
+	size = (len + 1) * sizeof(*value);
+	opt->current_val.uint_array_val = g_memdup2(value, size);
 }
 
 static void set_hash_table_value(struct config_option *opt, GHashTable *value)
@@ -494,7 +451,7 @@ static void set_hash_table_value(struct config_option *opt, GHashTable *value)
 	if (opt->current_val.hash_table_val)
 		g_hash_table_destroy(opt->current_val.hash_table_val);
 
-	opt->current_val.hash_table_val = value;
+	opt->current_val.hash_table_val = g_hash_table_ref(value);
 }
 
 /* Internal helper-wrappers */
@@ -536,7 +493,7 @@ void __connman_setting_set_option(const char *key, const char *value)
 	if (!opt)
 		return;
 
-	set_str_value(opt, g_strdup(value), NULL);
+	set_str_value(opt, value);
 }
 
 /* Online mode checking functions */
@@ -672,556 +629,352 @@ static struct config_option config_options[] = {
 	/* BackgroundScanning */
 	{
 		.opt_key = CONF_BG_SCAN,
-		.opt_value = CONF_BG_SCAN_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = true,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* FallbackTimeservers */
 	{
 		.opt_key = CONF_PREF_TIMESERVERS,
-		.opt_value = CONF_PREF_TIMESERVERS_VAL,
 		.opt_type = CONF_TYPE_STRARR,
 		.opt_return_type = CONF_TYPE_STRARR,
 		.default_val.str_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_list_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* DefaultAutoConnectTechnologies */
 	{
 		.opt_key = CONF_AUTO_CONNECT_TECHS,
-		.opt_value = CONF_AUTO_CONNECT_TECHS_VAL,
 		.opt_type = CONF_TYPE_UINTARR,
 		.opt_return_type = CONF_TYPE_UINTARR,
-		.default_val.int_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.default_val.uint_array_val = NULL,
+		.parser.parse_uint_list_cb = parse_service_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* DefaultEnabledTechnologies */
 	{
 		.opt_key = CONF_ENABLED_TECHS,
-		.opt_value = CONF_ENABLED_TECHS_VAL,
 		.opt_type = CONF_TYPE_UINTARR,
 		.opt_return_type = CONF_TYPE_UINTARR,
-		.default_val.int_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.default_val.uint_array_val = NULL,
+		.parser.parse_uint_list_cb = parse_service_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* DefaultFavoriteTechnologies */
 	{
 		.opt_key = CONF_FAVORITE_TECHS,
-		.opt_value = CONF_FAVORITE_TECHS_VAL,
 		.opt_type = CONF_TYPE_UINTARR,
 		.opt_return_type = CONF_TYPE_UINTARR,
-		.default_val.int_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.default_val.uint_array_val = NULL,
+		.parser.parse_uint_list_cb = parse_service_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* AlwaysConnectedTechnologies */
 	{
 		.opt_key = CONF_ALWAYS_CONNECTED_TECHS,
-		.opt_value = CONF_ALWAYS_CONNECTED_TECHS_VAL,
 		.opt_type = CONF_TYPE_UINTARR,
 		.opt_return_type = CONF_TYPE_UINTARR,
-		.default_val.int_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.default_val.uint_array_val = NULL,
+		.parser.parse_uint_list_cb = parse_service_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* PreferredTechnologies */
 	{
 		.opt_key = CONF_PREFERRED_TECHS,
-		.opt_value = CONF_PREFERRED_TECHS_VAL,
 		.opt_type = CONF_TYPE_UINTARR,
 		.opt_return_type = CONF_TYPE_UINTARR,
-		.default_val.int_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = parse_service_types,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.default_val.uint_array_val = NULL,
+		.parser.parse_uint_list_cb = parse_service_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* FallbackNameservers */
 	{
 		.opt_key = CONF_FALLBACK_NAMESERVERS,
-		.opt_value = CONF_FALLBACK_NAMESERVERS_VAL,
 		.opt_type = CONF_TYPE_STRARR,
 		.opt_return_type = CONF_TYPE_STRARR,
 		.default_val.str_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = parse_fallback_nameservers,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_list_cb = parse_fallback_nameservers,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* InputRequestTimeout */
 	{
 		.opt_key = CONF_TIMEOUT_INPUTREQ,
-		.opt_value = CONF_TIMEOUT_INPUTREQ_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_INPUT_REQUEST_TIMEOUT,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1000
 	},
 	/* BrowserLaunchTimeout */
 	{
 		.opt_key = CONF_TIMEOUT_BROWSERLAUNCH,
-		.opt_value = CONF_TIMEOUT_BROWSERLAUNCH_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_BROWSER_LAUNCH_TIMEOUT,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1000
 	},
 	/* NetworkInterfaceBlacklist */
 	{
 		.opt_key = CONF_BLACKLISTED_INTERFACES,
-		.opt_value = CONF_BLACKLISTED_INTERFACES_VAL,
 		.opt_type = CONF_TYPE_STRARR,
 		.opt_return_type = CONF_TYPE_STRARR,
 		.default_val.str_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_list_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* AllowHostnameUpdates */
 	{
 		.opt_key = CONF_ALLOW_HOSTNAME_UPDATES,
-		.opt_value = CONF_ALLOW_HOSTNAME_UPDATES_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = true,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* AllowDomainnameUpdates */
 	{
 		.opt_key = CONF_ALLOW_DOMAINNAME_UPDATES,
-		.opt_value = CONF_ALLOW_DOMAINNAME_UPDATES_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = true,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* SingleConnectedTechnology */
 	{
 		.opt_key = CONF_SINGLE_TECH,
-		.opt_value = CONF_SINGLE_TECH_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* TetheringTechnologies */
 	{
 		.opt_key = CONF_TETHERING_TECHNOLOGIES,
-		.opt_value = CONF_TETHERING_TECHNOLOGIES_VAL,
 		.opt_type = CONF_TYPE_STRARR,
 		.opt_return_type = CONF_TYPE_STRARR,
 		.default_val.str_array_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_list_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* PersistentTetheringMode */
 	{
 		.opt_key = CONF_PERSISTENT_TETHERING_MODE,
-		.opt_value = CONF_PERSISTENT_TETHERING_MODE_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* Enable6to4 */
 	{
 		.opt_key = CONF_ENABLE_6TO4,
-		.opt_value = CONF_ENABLE_6TO4_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* VendorClassID */
 	{
 		.opt_key = CONF_VENDOR_CLASS_ID,
-		.opt_value = CONF_VENDOR_CLASS_ID_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* EnableOnlineCheck */
 	{
 		.opt_key = CONF_ENABLE_ONLINE_CHECK,
-		.opt_value = CONF_ENABLE_ONLINE_CHECK_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = true,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* EnableOnlineToReadyTransition */
 	{
 		.opt_key = CONF_ENABLE_ONLINE_TO_READY_TRANSITION,
-		.opt_value = CONF_ENABLE_ONLINE_TO_READY_TRANSITION_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* OnlineCheckMode */
 	{
 		.opt_key = CONF_ONLINE_CHECK_MODE,
-		.opt_value = CONF_ONLINE_CHECK_MODE_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val =
 				CONNMAN_SERVICE_ONLINE_CHECK_MODE_ONE_SHOT,
-		.check_str_cb = check_online_mode,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = check_online_mode,
 		.error_cb = online_check_mode_set_from_deprecated,
 		.multiplier = 0
 	},
 	/* OnlineCheckIPv4URL */
 	{
 		.opt_key = CONF_ONLINE_CHECK_IPV4_URL,
-		.opt_value = CONF_ONLINE_CHECK_IPV4_URL_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = DEFAULT_ONLINE_CHECK_IPV4_URL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* OnlineCheckIPv6URL */
 	{
 		.opt_key = CONF_ONLINE_CHECK_IPV6_URL,
-		.opt_value = CONF_ONLINE_CHECK_IPV6_URL_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = DEFAULT_ONLINE_CHECK_IPV6_URL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* OnlineCheckConnectTimeout */
 	{
 		.opt_key = CONF_ONLINE_CHECK_CONNECT_TIMEOUT,
-		.opt_value = CONF_ONLINE_CHECK_CONNECT_TIMEOUT_VAL,
 		.opt_type = CONF_TYPE_DOUBLE,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.double_val = DEFAULT_ONLINE_CHECK_CONNECT_TIMEOUT,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = online_check_connect_timeout_error,
 		.multiplier = 1000
 	},
 	/* OnlineCheckInitialInterval */
 	{
 		.opt_key = CONF_ONLINE_CHECK_INITIAL_INTERVAL,
-		.opt_value = CONF_ONLINE_CHECK_INITIAL_INTERVAL_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_ONLINE_CHECK_INITIAL_INTERVAL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1
 	},
 	/* OnlineCheckMaxInterval */
 	{
 		.opt_key = CONF_ONLINE_CHECK_MAX_INTERVAL,
-		.opt_value = CONF_ONLINE_CHECK_MAX_INTERVAL_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_ONLINE_CHECK_MAX_INTERVAL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1
 	},
 	/* OnlineCheckFailuresThreshold */
 	{
 		.opt_key = CONF_ONLINE_CHECK_FAILURES_THRESHOLD,
-		.opt_value = CONF_ONLINE_CHECK_FAILURES_THRESHOLD_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_ONLINE_CHECK_FAILURES_THRESHOLD,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1
 	},
 	/* OnlineCheckSuccessesThreshold */
 	{
 		.opt_key = CONF_ONLINE_CHECK_SUCCESSES_THRESHOLD,
-		.opt_value = CONF_ONLINE_CHECK_SUCCESSES_THRESHOLD_VAL,
 		.opt_type = CONF_TYPE_UINT,
 		.opt_return_type = CONF_TYPE_UINT,
 		.default_val.uint_val = DEFAULT_ONLINE_CHECK_SUCCESSES_THRESHOLD,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 1
 	},
 	/* OnlineCheckIntervalStyle */
 	{
 		.opt_key = CONF_ONLINE_CHECK_INTERVAL_STYLE,
-		.opt_value = CONF_ONLINE_CHECK_INTERVAL_STYLE_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = DEFAULT_ONLINE_CHECK_INTERVAL_STYLE,
-		.check_str_cb = check_online_check_interval_style,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = check_online_check_interval_style,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* AutoConnectRoamingServices */
 	{
 		.opt_key = CONF_AUTO_CONNECT_ROAMING_SERVICES,
-		.opt_value = CONF_AUTO_CONNECT_ROAMING_SERVICES_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* AddressConflictDetection */
 	{
 		.opt_key = CONF_ACD,
-		.opt_value = CONF_ACD_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* UseGatewaysAsTimeservers */
 	{
 		.opt_key = CONF_USE_GATEWAYS_AS_TIMESERVERS,
-		.opt_value = CONF_USE_GATEWAYS_AS_TIMESERVERS_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* Localtime */
 	{
 		.opt_key = CONF_LOCALTIME,
-		.opt_value = CONF_LOCALTIME_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = DEFAULT_LOCALTIME,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* RegdomFollowsTimezone */
 	{
 		.opt_key = CONF_REGDOM_FOLLOWS_TIMEZONE,
-		.opt_value = CONF_REGDOM_FOLLOWS_TIMEZONE_VAL,
 		.opt_type = CONF_TYPE_BOOL,
 		.opt_return_type = CONF_TYPE_BOOL,
 		.default_val.bool_val = false,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* ResolvConf */
 	{
 		.opt_key = CONF_RESOLV_CONF,
-		.opt_value = CONF_RESOLV_CONF_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* FallbackDeviceTypes */
 	{
 		.opt_key = CONF_FALLBACK_DEVICE_TYPES,
-		.opt_value = CONF_FALLBACK_DEVICE_TYPES_VAL,
 		.opt_type = CONF_TYPE_HASHTABLE,
 		.opt_return_type = CONF_TYPE_HASHTABLE,
 		.default_val.hash_table_val = NULL,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = parse_fallback_device_types,
+		.parser.parse_hashtable_cb = parse_fallback_device_types,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
 	/* Option "wifi" */
 	{
 		.opt_key = CONF_OPTION_WIFI,
-		.opt_value = CONF_OPTION_WIFI_VAL,
 		.opt_type = CONF_TYPE_STR,
 		.opt_return_type = CONF_TYPE_STR,
 		.default_val.str_val = DEFAULT_WIFI_OPTION,
-		.check_str_cb = NULL,
-		.parse_list_strs_cb = NULL,
-		.parse_list_uint_cb = NULL,
-		.parse_list_item_cb = NULL,
-		.parse_hashtable_cb = NULL,
+		.parser.parse_str_cb = NULL,
 		.error_cb = NULL,
 		.multiplier = 0
 	},
@@ -1235,6 +988,7 @@ static void read_config_value(GKeyFile *config, struct config_option *option,
 {
 	GError *error = NULL;
 	const char *group = GENERAL_GROUP;
+	char *str = NULL;
 	char **list;
 	gsize len;
 
@@ -1248,44 +1002,52 @@ static void read_config_value(GKeyFile *config, struct config_option *option,
 	case CONF_TYPE_BOOL:
 		bool value = __connman_config_get_bool(config, group,
 						option->opt_key, &error);
-		if (!error)
-			set_bool_value(option, value);
+		if (error) {
+			if (option->error_cb)
+				option->error_cb();
+			break;
+		}
+
+		set_bool_value(option, value);
+
 		break;
 	case CONF_TYPE_UINT:
-		int integer = g_key_file_get_integer(config, group,
+		gint integer = g_key_file_get_integer(config, group,
 						option->opt_key, &error);
-		if (!error && integer >= 0)
-			set_uint_value(option, integer * option->multiplier);
+		/* Ignore negative integer values. 0 is a valid value. */
+		if (error || integer < 0) {
+			if (option->error_cb)
+				option->error_cb();
+			break;
+		}
+
+		set_uint_value(option, integer * option->multiplier);
 
 		break;
 	case CONF_TYPE_DOUBLE:
 		double real = g_key_file_get_double(config, group,
 						option->opt_key, &error);
-		if (!error) {
-			if (real < 0 && option->error_cb)
+		if (error || real < 0) {
+			if (option->error_cb)
 				option->error_cb();
-			else
-				set_uint_value(option,
-						real * option->multiplier);
-		} else if (option->error_cb) {
-			option->error_cb();
+			break;
 		}
+
+		set_uint_value(option, real * option->multiplier);
 
 		break;
 	case CONF_TYPE_STR:
-		char *str = __connman_config_get_string(config, group,
+		str = __connman_config_get_string(config, group,
 						option->opt_key, &error);
-		if (!error) {
-			set_str_value(option, str, option->check_str_cb);
-		} else if (option->error_cb) {
-			option->error_cb();
+		if (error) {
+			if (option->error_cb)
+				option->error_cb();
 			g_free(str);
-		} else if (!str && option->default_val.str_val) {
-			/* If not set and default exists, use default */
-			set_str_value(option, g_strdup(
-						option->default_val.str_val),
-						option->check_str_cb);
-		} else {
+			break;
+		}
+
+		if (str) {
+			set_str_value(option, str);
 			g_free(str);
 		}
 
@@ -1293,35 +1055,36 @@ static void read_config_value(GKeyFile *config, struct config_option *option,
 	case CONF_TYPE_STRARR:
 		list = __connman_config_get_string_list(config, group,
 						option->opt_key, &len, &error);
-		if (!error) {
-			if (option->parse_list_item_cb) {
-				set_str_array_value_cb(option, list,
-						option->parse_list_item_cb,
-						len, append);
-				g_strfreev(list);
-			} else if (option->parse_list_strs_cb) {
-				char **new_list = option->parse_list_strs_cb(
-								list, &len);
-				g_strfreev(list);
+		if (error) {
+			if (option->error_cb)
+				option->error_cb();
+		} else if (option->parser.parse_list_cb) {
+			char **new_list = option->parser.parse_list_cb(
+							list, &len);
+			if (new_list)
+				set_str_array_value(option, new_list);
 
-				if (new_list)
-					set_str_array_value(option, new_list);
-			} else {
-				set_str_array_value(option, list);
-			}
+			g_strfreev(new_list);
+		} else {
+			set_str_array_value(option, list);
 		}
 
+		g_strfreev(list);
 		break;
 	case CONF_TYPE_UINTARR:
 		list = __connman_config_get_string_list(config, group,
 						option->opt_key, &len, &error);
-		if (!error) {
-			if (option->parse_list_uint_cb) {
-				unsigned int *int_list =
-						option->parse_list_uint_cb(
+		if (error) {
+			if (option->error_cb)
+				option->error_cb();
+		} else if (option->parser.parse_uint_list_cb) {
+			unsigned int *uint_list =
+					option->parser.parse_uint_list_cb(
 								list, len);
-				set_int_array_value(option, int_list);
-			}
+			if (uint_list)
+				set_uint_array_value(option, uint_list, len);
+
+			g_free(uint_list);
 		}
 
 		g_strfreev(list);
@@ -1329,12 +1092,19 @@ static void read_config_value(GKeyFile *config, struct config_option *option,
 	case CONF_TYPE_HASHTABLE:
 		list = __connman_config_get_string_list(config, group,
 						option->opt_key, &len, &error);
-		if (!error) {
-			GHashTable *hash = option->parse_hashtable_cb(list, len);
-			g_strfreev(list);
-			set_hash_table_value(option, hash);
+		if (error) {
+			if (option->error_cb)
+				option->error_cb();
+		} else if (option->parser.parse_hashtable_cb) {
+			GHashTable *hash = option->parser.parse_hashtable_cb(
+								list, len);
+			if (hash) {
+				set_hash_table_value(option, hash);
+				g_hash_table_unref(hash);
+			}
 		}
 
+		g_strfreev(list);
 		break;
 	}
 
@@ -1382,17 +1152,27 @@ static void initialize_default_values()
 		opt = &config_options[i];
 
 		if (g_str_equal(opt->opt_key, CONF_AUTO_CONNECT_TECHS)) {
-			opt->default_val.int_array_val =
-				parse_service_types(default_auto_connect,
-				CONF_ARRAY_SIZE(default_auto_connect));
+			if (!opt->parser.parse_uint_list_cb)
+				continue;
+
+			opt->default_val.uint_array_val =
+				opt->parser.parse_uint_list_cb(default_auto_connect,
+					CONF_ARRAY_SIZE(default_auto_connect));
 		} else if (g_str_equal(opt->opt_key, CONF_ENABLED_TECHS)) {
-			opt->default_val.int_array_val =
-				parse_service_types(default_enabled_techs,
-				CONF_ARRAY_SIZE(default_enabled_techs));
+			if (!opt->parser.parse_uint_list_cb)
+				continue;
+
+			opt->default_val.uint_array_val =
+				opt->parser.parse_uint_list_cb(
+					default_enabled_techs,
+					CONF_ARRAY_SIZE(default_enabled_techs));
 		} else if (g_str_equal(opt->opt_key, CONF_FAVORITE_TECHS)) {
-			opt->default_val.int_array_val =
-				parse_service_types(default_favorite_techs,
-				CONF_ARRAY_SIZE(default_favorite_techs));
+			if (!opt->parser.parse_uint_list_cb)
+				continue;
+
+			opt->default_val.uint_array_val =
+				opt->parser.parse_uint_list_cb(default_favorite_techs,
+					CONF_ARRAY_SIZE(default_favorite_techs));
 		} else if (g_str_equal(opt->opt_key,
 						CONF_BLACKLISTED_INTERFACES)) {
 			opt->default_val.str_array_val = g_strdupv(
@@ -1406,15 +1186,20 @@ static void initialize_default_values()
 				*/
 				if (opt->opt_return_type == CONF_TYPE_STR)
 					break;
-				/* fall-through */
+			/* Copy simple types */
 			case CONF_TYPE_BOOL:
 			case CONF_TYPE_UINT:
 			case CONF_TYPE_DOUBLE:
 				opt->current_val = opt->default_val;
 				break;
 			case CONF_TYPE_UINTARR:
+				opt->current_val.uint_array_val = NULL;
+				break;
 			case CONF_TYPE_STRARR:
+				opt->current_val.str_array_val = NULL;
+				break;
 			case CONF_TYPE_HASHTABLE:
+				opt->current_val.hash_table_val = NULL;
 				break;
 			}
 		}
@@ -1502,7 +1287,7 @@ int __connman_setting_init()
 	DBG("");
 
 	if (config_options_table)
-		g_hash_table_unref(config_options_table);
+		return -EALREADY;
 
 	config_options_table = g_hash_table_new(g_str_hash, g_str_equal);
 	if (!config_options_table)
@@ -1537,10 +1322,10 @@ void __connman_setting_cleanup()
 			if (opt->opt_return_type != CONF_TYPE_STR)
 				break;
 
+			/* Ensure that default static str is not freed. */
 			if (opt->current_val.str_val !=
 						opt->default_val.str_val)
 				g_free(opt->current_val.str_val);
-
 			opt->current_val.str_val = NULL;
 			break;
 		case CONF_TYPE_STRARR:
@@ -1550,10 +1335,10 @@ void __connman_setting_cleanup()
 			opt->default_val.str_array_val = NULL;
 			break;
 		case CONF_TYPE_UINTARR:
-			g_free(opt->current_val.int_array_val);
-			opt->current_val.int_array_val = NULL;
-			g_free(opt->default_val.int_array_val);
-			opt->default_val.int_array_val = NULL;
+			g_free(opt->current_val.uint_array_val);
+			opt->current_val.uint_array_val = NULL;
+			g_free(opt->default_val.uint_array_val);
+			opt->default_val.uint_array_val = NULL;
 			break;
 		case CONF_TYPE_HASHTABLE:
 			if (opt->current_val.hash_table_val)
