@@ -144,6 +144,14 @@ int __connman_log_init(const char *program, const char *debug,
 void __connman_log_cleanup(gboolean backtrace);
 void __connman_log_enable(struct connman_debug_desc *start,
 					struct connman_debug_desc *stop);
+void __connman_log_update(struct connman_debug_desc *start,
+					struct connman_debug_desc *stop,
+					const char *pattern,
+					unsigned int set_flags,
+					unsigned int clear_flags);
+int __connman_log_list(struct connman_debug_desc *start,
+					struct connman_debug_desc *stop,
+					GHashTable *hash);
 
 #include <connman/backtrace.h>
 

@@ -148,6 +148,24 @@ extern struct connman_debug_desc __stop___debug[];
 
 static gchar **enabled = NULL;
 
+static bool is_match(const char* pattern, struct connman_debug_desc *desc,
+					const char *alias)
+{
+	if (!pattern || !desc)
+		return false;
+
+	if (desc->name && g_pattern_match_simple(pattern, desc->name))
+		return true;
+
+	if (desc->file && g_pattern_match_simple(pattern, desc->file))
+		return true;
+
+	if (alias && g_pattern_match_simple(pattern, alias))
+		return true;
+
+	return false;
+}
+
 static bool is_enabled(struct connman_debug_desc *desc)
 {
 	int i;
@@ -156,12 +174,16 @@ static bool is_enabled(struct connman_debug_desc *desc)
 		return false;
 
 	for (i = 0; enabled[i]; i++) {
-		if (desc->name && g_pattern_match_simple(enabled[i],
-							desc->name))
-			return true;
-		if (desc->file && g_pattern_match_simple(enabled[i],
-							desc->file))
-			return true;
+		const char* pattern = enabled[i];
+		gboolean value = true;
+
+		if (pattern[0] == '!') {
+			pattern++;
+			value = false;
+		}
+
+		if (is_match(pattern, desc, NULL))
+			return value;
 	}
 
 	return false;
@@ -191,10 +213,96 @@ void __connman_log_enable(struct connman_debug_desc *start,
 				file = NULL;
 		}
 
-		if (is_enabled(desc))
+		if (is_enabled(desc) &&
+				!(desc->flags & CONNMAN_DEBUG_FLAG_PRINT)) {
 			desc->flags |= CONNMAN_DEBUG_FLAG_PRINT;
+		}
 	}
 }
+
+void __connman_log_update(struct connman_debug_desc *start,
+					struct connman_debug_desc *stop,
+					const char *pattern,
+					unsigned int set_flags,
+					unsigned int clear_flags)
+{
+	struct connman_debug_desc *desc;
+	const char *alias = NULL;
+	const char *file = NULL;
+
+	if (!start || !stop || !pattern)
+		return;
+
+	for (desc = start; desc < stop; desc++) {
+		if (desc->flags & CONNMAN_DEBUG_FLAG_ALIAS) {
+			alias = desc->name;
+			file = desc->file;
+			continue;
+		}
+
+		if (file && g_strcmp0(desc->file, file) != 0) {
+			alias = NULL;
+			file = NULL;
+		}
+
+		if (is_match(pattern, desc, alias)) {
+			desc->flags |= set_flags;
+			desc->flags &= ~clear_flags;
+		}
+	}
+}
+
+int __connman_log_list(struct connman_debug_desc *start,
+					struct connman_debug_desc *stop,
+					GHashTable *hash)
+{
+	struct connman_debug_desc *desc;
+
+	if (!start || !stop || !hash)
+		return -EINVAL;
+
+	for (desc = start; desc < stop; desc++) {
+		if (desc->file)
+			g_hash_table_replace(hash, (gpointer)desc->file, desc);
+
+		if (desc->name)
+			g_hash_table_replace(hash, (gpointer)desc->name, desc);
+	}
+
+	return 0;
+}
+
+/*
+ * Log public API. Allow to control all logging for both internal and
+ * dynamically loaded plugins.
+*/
+void connman_log_update_builtin(const char *pattern, unsigned int set_flags,
+					unsigned int clear_flags)
+{
+	__connman_log_update(__start___debug, __stop___debug, pattern,
+				set_flags, clear_flags);
+}
+
+/* Add builtin debug desc's to hash table */
+int connman_log_list_builtin(GHashTable *hash)
+{
+	if (!hash)
+		return -EINVAL;
+
+	return __connman_log_list(__start___debug, __stop___debug, hash);
+}
+
+
+/* Check if debug is enabled on desc. Ensure that return value is 0/1 */
+bool connman_log_is_enabled(const struct connman_debug_desc *desc)
+{
+	if (!desc)
+		return false;
+
+	return !!(desc->flags & CONNMAN_DEBUG_FLAG_PRINT);
+}
+
+/* End of log public API */
 
 int __connman_log_init(const char *program, const char *debug,
 		gboolean detach, gboolean backtrace,
