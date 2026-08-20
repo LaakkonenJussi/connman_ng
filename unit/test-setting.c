@@ -176,23 +176,23 @@ enum connman_service_type __connman_service_string2type(const char *str)
 	if (!str)
 		return CONNMAN_SERVICE_TYPE_UNKNOWN;
 
-	if (strncmp(str, "ethernet", 8) == 0)
+	if (strcmp(str, "ethernet") == 0)
 		return CONNMAN_SERVICE_TYPE_ETHERNET;
-	if (strncmp(str, "gadget", 6) == 0)
+	if (strcmp(str, "gadget") == 0)
 		return CONNMAN_SERVICE_TYPE_GADGET;
-	if (strncmp(str, "wifi", 4) == 0)
+	if (strcmp(str, "wifi") == 0)
 		return CONNMAN_SERVICE_TYPE_WIFI;
-	if (strncmp(str, "cellular", 8) == 0)
+	if (strcmp(str, "cellular") == 0)
 		return CONNMAN_SERVICE_TYPE_CELLULAR;
-	if (strncmp(str, "bluetooth", 9) == 0)
+	if (strcmp(str, "bluetooth") == 0)
 		return CONNMAN_SERVICE_TYPE_BLUETOOTH;
-	if (strncmp(str, "vpn", 3) == 0)
+	if (strcmp(str, "vpn") == 0)
 		return CONNMAN_SERVICE_TYPE_VPN;
-	if (strncmp(str, "gps", 3) == 0)
+	if (strcmp(str, "gps") == 0)
 		return CONNMAN_SERVICE_TYPE_GPS;
-	if (strncmp(str, "system", 6) == 0)
+	if (strcmp(str, "system") == 0)
 		return CONNMAN_SERVICE_TYPE_SYSTEM;
-	if (strncmp(str, "p2p", 3) == 0)
+	if (strcmp(str, "p2p") == 0)
 		return CONNMAN_SERVICE_TYPE_P2P;
 
 	return CONNMAN_SERVICE_TYPE_UNKNOWN;
@@ -1028,6 +1028,47 @@ static void setting_test_error0(void)
 	__connman_setting_cleanup();
 }
 
+static char *config_invalid0[] = {
+	"[General]",
+	"TetheringSubnetBlock = a.b.c.d",
+	"DefaultAutoConnectTechnologies = ethernet-wifi",
+	"DefaultFavoriteTechnologies = wifi/cellular",
+	"AlwaysConnectedTechnologies = ethernet_cellular",
+	"PreferredTechnologies = ethernet+wifi",
+	"FallbackNameservers = unknown-url",
+	"StorageRootPermissions = none",
+	"StorageDirPermissions = none",
+	"StorageFilePermissions = none",
+	"Umask = some",
+	"FallbackDeviceTypes = rndis0-gadget,usb0=ethernet",
+	NULL
+};
+
+static void setting_test_error1(void)
+{
+	GKeyFile *config;
+
+	do_init = do_cleanup = false;
+
+	__connman_setting_init();
+
+	/* Load empty config with defaults*/
+	setting_test_defaults0();
+
+	/* Load the invalid config. */
+	config = load_config_data(config_invalid0);
+	__connman_setting_read_config_values(config, false, false);
+	g_key_file_unref(config);
+
+	/* Test that defaults are not changed */
+	do_load = do_main = false;
+	setting_test_defaults0();
+
+	__connman_setting_cleanup();
+
+	do_init = do_cleanup = do_main = true;
+}
+
 static gchar *option_debug = NULL;
 
 static bool parse_debug(const char *key, const char *value,
@@ -1085,6 +1126,7 @@ int main (int argc, char *argv[])
 	g_test_add_func("/setting/test_options0", setting_test_options0);
 
 	g_test_add_func("/setting/test_error0", setting_test_error0);
+	g_test_add_func("/setting/test_error1", setting_test_error1);
 
 	err = g_test_run();
 
