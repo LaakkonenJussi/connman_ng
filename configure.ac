@@ -477,6 +477,11 @@ AC_ARG_ENABLE(stats, AS_HELP_STRING([--disable-stats],
 					[enable_stats=${enableval}])
 AM_CONDITIONAL(STATS, test "${enable_stats}" != "no")
 
+AC_ARG_ENABLE(logcontrol,
+	AC_HELP_STRING([--enable-logcontrol], [enable log control plugin]),
+			[enable_logcontrol=${enableval}], [enable_logcontrol="no"])
+AM_CONDITIONAL(LOGCONTROL, test "${enable_logcontrol}" != "no")
+
 if (test "${enable_tools}" != "no"); then
 	AC_PATH_PROGS(IPTABLES_SAVE, [iptables-save], [],
 						$PATH:/sbin:/usr/sbin)
