@@ -103,6 +103,40 @@ static bool check_plugin(struct connman_plugin_desc *desc,
 	return true;
 }
 
+void connman_plugin_log_update(const char *pattern, unsigned int set_flags,
+					unsigned int clear_flags)
+{
+	GSList *list;
+
+	for (list = plugins; list; list = list->next) {
+		struct connman_plugin *plugin = list->data;
+
+		__connman_log_update(plugin->desc->debug_start,
+					plugin->desc->debug_stop,
+					pattern,
+					set_flags,
+					clear_flags);
+	}
+}
+
+int connman_plugin_log_list(GHashTable *hash)
+{
+	GSList *list;
+
+	if (!hash)
+		return -EINVAL;
+
+	for (list = plugins; list; list = list->next) {
+		struct connman_plugin *plugin = list->data;
+
+		__connman_log_list(plugin->desc->debug_start,
+					plugin->desc->debug_stop,
+					hash);
+	}
+
+	return 0;
+}
+
 #include <builtin.h>
 
 int __connman_plugin_init(const char *pattern, const char *exclude)

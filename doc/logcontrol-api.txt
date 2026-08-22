@@ -1,0 +1,38 @@
+Debug log control
+=================
+
+Service		net.connman
+Interface	net.connman.DebugLog
+Object path	/
+
+Methods		void Enable(string pattern)
+
+			Enables all debug logs on files during run-time that
+			match the pattern.
+
+			Pattern matching uses GLib g_pattern_match_simple()
+			semantics (shell-style globs: '*', '?', '[]').
+
+			Possible Errors: [service].Error.InvalidArguments
+
+		void Disable(string pattern)
+
+			Disables all debug logs on files during run-time that
+			match the pattern.
+
+			Pattern matching is same as for Enable().
+
+			Possible Errors: [service].Error.InvalidArguments
+
+		array{string, boolean} List()
+
+			Returns all available debug file names together with
+			with their current enabled state.
+
+			The boolean is true if debug logging is currently
+			enabled for the corresponding descriptor.
+
+			In order for Enable or Disable call to have any effect,
+			the pattern must match one or more of these strings.
+
+			Possible Errors: none.

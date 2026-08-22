@@ -100,6 +100,11 @@ struct connman_plugin_desc {
 		};
 #endif
 
+void connman_plugin_log_update(const char *pattern,
+				unsigned int set_flags,
+				unsigned int clear_flags);
+int connman_plugin_log_list(GHashTable *hash);
+
 #ifdef __cplusplus
 }
 #endif

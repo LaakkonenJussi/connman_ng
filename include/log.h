@@ -22,6 +22,10 @@
 #ifndef __CONNMAN_LOG_H
 #define __CONNMAN_LOG_H
 
+#include <stdarg.h>
+#include <stdbool.h>
+#include <glib.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -146,6 +150,11 @@ struct connman_debug_desc {
 			connman_debug("%s:%s() " fmt, \
 					__FILE__, __func__, ##arg); \
 } while (0)
+
+void connman_log_update_builtin(const char *pattern, unsigned int set_flags,
+					unsigned int clear_flags);
+int connman_log_list_builtin(GHashTable *hash);
+bool connman_log_is_enabled(const struct connman_debug_desc *desc);
 
 #ifdef __cplusplus
 }
