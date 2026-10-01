@@ -2,7 +2,8 @@
  *
  *  Connection Manager
  *
- *  Copyright (C) 2012,2014  BMW Car IT GmbH.
+ *  Copyright (C) 2020  Jolla Ltd.
+ *  Copyright (C) 2020  Open Mobile Platform LLC.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -19,23 +20,40 @@
  *
  */
 
-#ifndef __CONNMAN_INOTIFY_H
-#define __CONNMAN_INOTIFY_H
-
-struct inotify_event;
-
-typedef void (* inotify_event_cb) (struct inotify_event *event,
-					const char *ident,
-					gpointer user_data);
-
-int connman_inotify_register(const char *path, inotify_event_cb callback,
-				gpointer user_data,
-				GDestroyNotify free_func);
-void connman_inotify_unregister(const char *path, inotify_event_cb callback,
-				gpointer user_data);
-
-#ifdef __cplusplus
-}
+#ifdef HAVE_CONFIG_H
+#include <config.h>
 #endif
 
-#endif /* __CONNMAN_INOTIFY_H */
+#include <errno.h>
+#include <string.h>
+
+#include "connman.h"
+
+int __connman_login_manager_init()
+{
+	if (!connman_setting_get_bool("EnableLoginManager"))
+		return -EOPNOTSUPP;
+
+#ifdef SYSTEMD
+	int err;
+
+	err = __systemd_login_init();
+	if (err)
+		connman_warn("cannot initialize systemd login manager (%s)",
+					strerror(-err));
+
+	return err;
+#endif
+
+	return 0;
+}
+
+void __connman_login_manager_cleanup()
+{
+	if (!connman_setting_get_bool("EnableLoginManager"))
+		return;
+
+#ifdef SYSTEMD
+	__systemd_login_cleanup();
+#endif
+}

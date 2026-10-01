@@ -284,6 +284,65 @@ int __connman_resolvfile_remove(int index, const char *domain, const char *serve
 int __connman_resolver_redo_servers(int index);
 int __connman_resolver_set_mdns(int index, bool enabled);
 
+#include <connman/storage.h>
+
+#define STORAGEDIR connman_storage_dir()
+#define VPN_STORAGEDIR connman_storage_vpn_dir()
+#define USER_STORAGEDIR connman_storage_user_dir()
+#define USER_VPN_STORAGEDIR connman_storage_user_vpn_dir()
+#define STORAGE_DIR_MODE __connman_storage_dir_mode()
+#define STORAGE_FILE_MODE __connman_storage_file_mode()
+
+enum connman_storage_dir_type {
+	STORAGE_DIR_TYPE_MAIN	= 0x0001,
+	STORAGE_DIR_TYPE_VPN	= 0x0002,
+	STORAGE_DIR_TYPE_USER	= 0x0004,
+	STORAGE_DIR_TYPE_STATE	= 0x0008,
+};
+
+/*
+ * Callbacks to be use in user change process. Callbacks are executed in the
+ * defined order.
+ */
+struct connman_storage_callbacks {
+	/* Prepare is called to remove all used technologies from use */
+	bool (*pre) (void);
+
+	/* Unload is called to remove all used services/providers from use. */
+	void (*unload) (char **items, int len);
+
+	/* Load is called to load all the new services/providers. */
+	void (*load) (void);
+
+	/* Post callback is to initialize technologies from new settings. */
+	bool (*post) (void);
+
+	/* Finalize callback is to do additional actions after setup. */
+	void (*finalize) (uid_t uid, void *user_data);
+
+	/* Additional data to be passed on finalize callback */
+	void *finalize_user_data;
+
+	/* Callback for notifying about user change. */
+	void (*uid_changed) (uid_t uid);
+
+	const char* (*get_peer_dbus_name) (void);
+};
+
+typedef void (*connman_storage_change_user_result_cb_t)(uid_t uid, int err,
+			void *user_data);
+
+mode_t __connman_storage_dir_mode(void);
+mode_t __connman_storage_file_mode(void);
+int __connman_storage_init(const char *root, mode_t dir_mode,
+			mode_t file_mode);
+int __connman_storage_create_dir(const char *dir, mode_t permissions);
+int __connman_storage_register_dbus(enum connman_storage_dir_type type,
+				struct connman_storage_callbacks *callbacks);
+int __connman_storage_change_user(uid_t uid,
+			connman_storage_change_user_result_cb_t cb,
+			void *user_cb_data, bool prepare_only);
+void __connman_storage_cleanup(void);
 GKeyFile *__connman_storage_open_global(void);
 GKeyFile *__connman_storage_load_global(void);
 int __connman_storage_save_global(GKeyFile *keyfile);
@@ -294,7 +353,7 @@ GKeyFile *__connman_storage_load_provider_config(const char *ident);
 
 int __connman_storage_save_service(GKeyFile *keyfile, const char *ident);
 GKeyFile *__connman_storage_load_provider(const char *identifier);
-void __connman_storage_save_provider(GKeyFile *keyfile, const char *identifier);
+int __connman_storage_save_provider(GKeyFile *keyfile, const char *identifier);
 bool __connman_storage_remove_provider(const char *identifier);
 char **__connman_storage_get_providers(void);
 bool __connman_storage_remove_service(const char *service_id);
@@ -575,6 +634,8 @@ int __connman_technology_set_offlinemode(bool offlinemode);
 bool __connman_technology_get_offlinemode(void);
 void __connman_technology_set_connected(enum connman_service_type type,
 					bool connected);
+bool __connman_technology_disable_all(void);
+bool __connman_technology_enable_from_config(void);
 
 int __connman_technology_add_rfkill(unsigned int index,
 					enum connman_service_type type,
@@ -719,6 +780,9 @@ int __connman_service_init(void);
 void __connman_service_cleanup(void);
 int __connman_service_move(struct connman_service *service,
 				struct connman_service *target, bool before);
+void __connman_service_unload_services(gchar **services, int len);
+void __connman_service_load_services(void);
+
 int __connman_service_load_modifiable(struct connman_service *service);
 
 void __connman_service_list_struct(DBusMessageIter *iter);
@@ -927,6 +991,7 @@ void __connman_notifier_service_state_changed(struct connman_service *service,
 					enum connman_service_state state);
 void __connman_notifier_ipconfig_changed(struct connman_service *service,
 					struct connman_ipconfig *ipconfig);
+void __connman_notifier_storage_uid_changed(uid_t uid);
 
 bool __connman_notifier_is_connected(void);
 const char *__connman_notifier_get_state(void);
@@ -1131,3 +1196,11 @@ int __connman_util_get_random(uint64_t *val);
 unsigned int __connman_util_random_delay_ms(unsigned int secs);
 int __connman_util_init(void);
 void __connman_util_cleanup(void);
+
+int __connman_login_manager_init();
+void __connman_login_manager_cleanup();
+
+#ifdef SYSTEMD
+int __systemd_login_init();
+void __systemd_login_cleanup();
+#endif
