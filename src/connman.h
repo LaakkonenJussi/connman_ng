@@ -325,6 +325,8 @@ struct connman_storage_callbacks {
 
 	/* Callback for notifying about user change. */
 	void (*uid_changed) (uid_t uid);
+
+	const char* (*get_peer_dbus_name) (void);
 };
 
 typedef void (*connman_storage_change_user_result_cb_t)(uid_t uid, int err,
