@@ -126,6 +126,7 @@ static struct {
 	mode_t storage_dir_permissions;
 	mode_t storage_file_permissions;
 	mode_t umask;
+	char *user_storage_dir;
 	bool enable_6to4;
 	char *vendor_class_id;
 	bool enable_online_check;
@@ -210,6 +211,7 @@ static struct {
 #define CONF_STORAGE_ROOT_PERMISSIONS   "StorageRootPermissions"
 #define CONF_STORAGE_DIR_PERMISSIONS    "StorageDirPermissions"
 #define CONF_STORAGE_FILE_PERMISSIONS   "StorageFilePermissions"
+#define CONF_USER_STORAGE_DIR           "UserStorage"
 #define CONF_UMASK                      "Umask"
 #define CONF_ENABLE_6TO4                "Enable6to4"
 #define CONF_VENDOR_CLASS_ID            "VendorClassID"
@@ -253,6 +255,7 @@ static const char *supported_options[] = {
 	CONF_STORAGE_ROOT_PERMISSIONS,
 	CONF_STORAGE_DIR_PERMISSIONS,
 	CONF_STORAGE_FILE_PERMISSIONS,
+	CONF_USER_STORAGE_DIR,
 	CONF_UMASK,
 	CONF_ENABLE_6TO4,
 	CONF_VENDOR_CLASS_ID,
@@ -672,7 +675,19 @@ static void parse_config(GKeyFile *config, const char *file)
 	g_clear_error(&error);
 
 	connman_settings.storage_root = __connman_config_get_string(config,
-				GENERAL_GROUP, CONF_STORAGE_ROOT, NULL);
+				GENERAL_GROUP, CONF_STORAGE_ROOT, &error);
+	if (error)
+		connman_settings.storage_root = g_strdup(DEFAULT_STORAGE_ROOT);
+
+	g_clear_error(&error);
+
+	connman_settings.user_storage_dir = __connman_config_get_string(config,
+				GENERAL_GROUP, CONF_USER_STORAGE_DIR, &error);
+	if (error)
+		connman_settings.user_storage_dir =
+						g_strdup(DEFAULT_USER_STORAGE);
+
+	g_clear_error(&error);
 
 	parse_perm(config, GENERAL_GROUP, CONF_STORAGE_ROOT_PERMISSIONS,
 				&connman_settings.storage_root_permissions);
@@ -1282,14 +1297,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (mkdir(STORAGEDIR, S_IRUSR | S_IWUSR | S_IXUSR |
-				S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create storage directory");
-	}
-
-	umask(0077);
-
 	main_loop = g_main_loop_new(NULL, FALSE);
 
 	signal = setup_signalfd();
@@ -1316,10 +1323,11 @@ int main(int argc, char *argv[])
 	if (!option_config)
 		config_init(CONFIGMAINFILE);
 	else
-		config_init(option_config);;
+		config_init(option_config);
 
 	__connman_inotify_init();
 	__connman_storage_init(connman_settings.storage_root,
+				connman_settings.user_storage_dir,
 				connman_settings.storage_dir_permissions,
 				connman_settings.storage_file_permissions);
 
@@ -1458,6 +1466,8 @@ int main(int argc, char *argv[])
 	g_free(connman_settings.online_check_ipv4_url);
 	g_free(connman_settings.online_check_ipv6_url);
 	g_free(connman_settings.localtime);
+	g_free(connman_settings.storage_root);
+	g_free(connman_settings.user_storage_dir);
 
 	g_free(option_debug);
 	g_free(option_wifi);
