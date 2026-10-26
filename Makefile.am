@@ -384,11 +384,15 @@ tools_polkit_test_LDADD = @DBUS_LIBS@
 
 tools_private_network_test_LDADD = @GLIB_LIBS@ @DBUS_LIBS@
 
-tools_session_test_SOURCES = $(backtrace_sources) src/log.c src/dbus.c src/error.c \
+tools_session_test_SOURCES = $(backtrace_sources) src/log.c src/dbus.c \
+		src/error.c src/storage.c src/inotify.c \
 		tools/session-test.c tools/session-utils.c tools/manager-api.c \
 		tools/session-api.c tools/session-test.h
 tools_session_test_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ -ldl
+tools_session_test_CFLAGS = $(AM_CFLAGS) \
+		-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+		-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\"
 
 if XTABLES
 noinst_PROGRAMS += tools/iptables-test tools/ip6tables-test tools/iptables-unit \
@@ -411,7 +415,7 @@ tools_iptables_unit_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ @XTABLES_CFLAGS@ \
 		-DIP6TABLES_SAVE=\""${IP6TABLES_SAVE}"\"
 tools_iptables_unit_SOURCES = $(backtrace_sources) src/log.c \
 		src/iptables.c src/firewall-iptables.c src/nat.c \
-		src/storage.c tools/iptables-unit.c
+		src/storage.c src/inotify.c tools/iptables-unit.c src/error.c src/dbus.c
 tools_iptables_unit_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ @XTABLES_LIBS@ -ldl
 
