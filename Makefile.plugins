@@ -128,7 +128,7 @@ builtin_vpn_source = vpn/plugins/vpn.c vpn/plugins/vpn.h
 if VPNC_BUILTIN
 builtin_vpn_modules += vpnc
 builtin_vpn_sources += vpn/plugins/vpnc.c
-builtin_vpn_cflags += -DVPNC=\"@VPNC@\"
+builtin_vpn_cflags += -DVPNC=\"@VPNC@\" -DRUNSTATEDIR=\""$(runstatedir)"\"
 else
 vpn_plugin_LTLIBRARIES += vpn/plugins/vpnc.la
 vpn_plugin_objects += $(plugins_vpnc_la_OBJECTS)
@@ -145,12 +145,13 @@ builtin_vpn_source = vpn/plugins/vpn.c vpn/plugins/vpn.h
 if L2TP_BUILTIN
 builtin_vpn_modules += l2tp
 builtin_vpn_sources += vpn/plugins/l2tp.c
-builtin_vpn_cflags += -DL2TP=\"@L2TP@\"
+builtin_vpn_cflags += -DL2TP=\"@L2TP@\" -DVPN_STATEDIR=\""$(runstatedir)"\"
 else
 vpn_plugin_LTLIBRARIES += vpn/plugins/l2tp.la
 vpn_plugin_objects += $(plugins_l2tp_la_OBJECTS)
 vpn_plugins_l2tp_la_SOURCES = vpn/plugins/l2tp.c
 vpn_plugins_l2tp_la_CFLAGS = $(plugin_cflags) -DL2TP=\"@L2TP@\" \
+					-DVPN_STATEDIR=\""$(runstatedir)"\" \
 					-DSCRIPTDIR=\""$(build_scriptdir)"\"
 vpn_plugins_l2tp_la_LDFLAGS = $(plugin_ldflags)
 endif
