@@ -1,83 +1,80 @@
---- /dev/null
-+++ b/.github/workflows/c-cpp.yml
-@@
-+name: C/C++ CI
-+
-+on:
-+  push:
-+    branches: ["master", "next"]
-+  pull_request:
-+    branches: ["master", "next"]
-+
-+jobs:
-+  build:
-+    runs-on: ubuntu-latest
-+    strategy:
-+      fail-fast: false
-+      matrix:
-+        include:
-+          - name: default-vpn-set
-+            configure: >-
-+              ./configure --disable-static
-+              --enable-ethernet
-+              --enable-client
-+              --enable-test
-+              --enable-openconnect=builtin
-+              --enable-openvpn=builtin
-+              --enable-vpnc=builtin
-+              --enable-l2tp=builtin
-+              --enable-pptp=builtin
-+              --enable-loopback=builtin
-+              --enable-pacrunner=builtin
-+              --enable-wireguard=builtin
-+              --with-dns-backend=systemd-resolved
-+              --enable-systemd
-+          - name: wifi-bluetooth-set
-+            configure: >-
-+              ./configure --disable-static
-+              --enable-ethernet=builtin
-+              --enable-wifi
-+              --enable-bluetooth=builtin
-+              --enable-openconnect
-+              --enable-openvpn
-+              --enable-vpnc
-+              --enable-l2tp
-+              --enable-pptp
-+              --enable-wireguard
-+              --enable-loopback=builtin
-+              --enable-pacrunner=builtin
-+              --enable-client
-+              --enable-test
-+              --enable-systemd
-+              --with-firewall=iptables
-+              --with-dns-backend=systemd-resolved
-+
-+    name: ${{ matrix.name }}
-+
-+    steps:
-+      - name: Checkout source
-+        uses: actions/checkout@v4
-+
-+      - name: Install build dependencies
-+        run: |
-+          sudo apt-get update
-+          sudo apt-get install -y --no-install-recommends \
-+            build-essential autoconf automake autotools-dev libtool pkg-config \
-+            libglib2.0-dev libdbus-1-dev libreadline-dev libgnutls28-dev \
-+            libsystemd-dev libxtables-dev libmnl-dev \
-+            iptables openconnect openvpn vpnc xl2tpd pptp-linux ppp-dev
-+
-+      - name: Generate autotools files
-+        run: autoreconf -fi
-+
-+      - name: Configure build
-+        run: ${{ matrix.configure }}
-+
-+      - name: Compile
-+        run: make -j"$(nproc)"
-+
-+      - name: Run tests
-+        run: make check
-+
-+      - name: Distcheck
+name: C/C++ CI
+
+on:
+  push:
+    branches: ["master", "next"]
+  pull_request:
+    branches: ["master", "next"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default-vpn-set
+            configure: >-
+              ./configure --disable-static
+              --enable-ethernet
+              --enable-client
+              --enable-test
+              --enable-openconnect=builtin
+              --enable-openvpn=builtin
+              --enable-vpnc=builtin
+              --enable-l2tp=builtin
+              --enable-pptp=builtin
+              --enable-loopback=builtin
+              --enable-pacrunner=builtin
+              --enable-wireguard=builtin
+              --with-dns-backend=systemd-resolved
+              --enable-systemd
+          - name: wifi-bluetooth-set
+            configure: >-
+              ./configure --disable-static
+              --enable-ethernet=builtin
+              --enable-wifi
+              --enable-bluetooth=builtin
+              --enable-openconnect
+              --enable-openvpn
+              --enable-vpnc
+              --enable-l2tp
+              --enable-pptp
+              --enable-wireguard
+              --enable-loopback=builtin
+              --enable-pacrunner=builtin
+              --enable-client
+              --enable-test
+              --enable-systemd
+              --with-firewall=iptables
+              --with-dns-backend=systemd-resolved
+
+    name: ${{ matrix.name }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake autotools-dev libtool pkg-config \
+            libglib2.0-dev libdbus-1-dev libreadline-dev libgnutls28-dev \
+            libsystemd-dev libxtables-dev libmnl-dev \
+            iptables openconnect openvpn vpnc xl2tpd pptp-linux ppp-dev
+
+      - name: Generate autotools files
+        run: autoreconf -fi
+
+      - name: Configure build
+        run: ${{ matrix.configure }}
+
+      - name: Compile
+        run: make -j"$(nproc)"
+
+      - name: Run tests
+        run: make check
+
+      - name: Distcheck
 +        run: make distcheck
