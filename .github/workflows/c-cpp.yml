@@ -77,4 +77,4 @@ jobs:
         run: make check
 
       - name: Distcheck
-+        run: make distcheck
+        run: make distcheck
