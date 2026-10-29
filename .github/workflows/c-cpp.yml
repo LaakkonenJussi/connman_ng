@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: default-vpn-set
+          - name: builtin-vpn-set
             configure: >-
               ./configure --disable-static
               --enable-ethernet
@@ -29,7 +29,7 @@ jobs:
               --enable-wireguard=builtin
               --with-dns-backend=systemd-resolved
               --enable-systemd
-          - name: wifi-bluetooth-set
+          - name: external-vpn-set
             configure: >-
               ./configure --disable-static
               --enable-ethernet=builtin
