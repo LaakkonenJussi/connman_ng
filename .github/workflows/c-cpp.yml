@@ -58,7 +58,12 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get build-dep -y connman
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake autotools-dev libtool pkg-config \
+            libglib2.0-dev libdbus-1-dev libreadline-dev libgnutls28-dev \
+            libsystemd-dev libxtables-dev libmnl-dev libopenconnect-dev \
+            iptables openconnect openvpn vpnc xl2tpd pptp-linux ppp-dev \
+            gtk-doc-tools libbluetooth-dev libudev-dev pkgconf wpasupplicant
 
       - name: Generate autotools files
         run: autoreconf -fi
