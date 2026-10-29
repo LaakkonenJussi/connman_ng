@@ -120,6 +120,18 @@ AC_ARG_ENABLE(hh2serial-gps,
 AM_CONDITIONAL(HH2SERIAL_GPS, test "${enable_hh2serial_gps}" != "no")
 AM_CONDITIONAL(HH2SERIAL_GPS_BUILTIN, test "${enable_hh2serial_gps}" = "builtin")
 
+AC_ARG_ENABLE(systemd, AS_HELP_STRING([--enable-systemd],
+		[enable systemd use, enables systemd login manager]), [
+	if (test "${enableval}" = "yes"); then
+		PKG_CHECK_MODULES(LIBSYSTEMD, libsystemd, dummy=yes,
+			AC_MSG_ERROR(libsystemd is required))
+		CFLAGS="$CFLAGS -DSYSTEMD $LIBSYSTEMD_CFLAGS"
+		LIBS="$LIBS $LIBSYSTEMD_LIBS"
+	fi
+])
+
+AM_CONDITIONAL([SYSTEMD_LOGIN], [test "${enable_systemd}" = "yes"])
+
 AC_ARG_WITH(openconnect, AS_HELP_STRING([--with-openconnect=PROGRAM],
         [specify location of openconnect binary]), [path_openconnect=${withval}])
 

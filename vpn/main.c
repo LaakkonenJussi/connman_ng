@@ -3,6 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2015-2020  Jolla Ltd. All rights reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -169,6 +170,13 @@ unsigned int connman_timeout_input_request(void)
 	return __vpn_settings_get_timeout_inputreq();
 }
 
+static struct connman_storage_callbacks storage_callbacks = {
+	.unload =			vpn_provider_unload_providers,
+	.load =				vpn_provider_load_providers,
+	.finalize = 			__vpn_settings_set_binary_user_override,
+	.get_peer_dbus_name =		__vpn_provider_get_connman_dbus_name,
+};
+
 int main(int argc, char *argv[])
 {
 	GOptionContext *context;
@@ -203,30 +211,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (mkdir(VPN_STATEDIR, S_IRUSR | S_IWUSR | S_IXUSR |
-				S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create state directory");
-	}
-
-	/*
-	 * At some point the VPN stuff is migrated into VPN_STORAGEDIR
-	 * and this mkdir() call can be removed.
-	 */
-	if (mkdir(STORAGEDIR, S_IRUSR | S_IWUSR | S_IXUSR |
-				S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create storage directory");
-	}
-
-	if (mkdir(VPN_STORAGEDIR, S_IRUSR | S_IWUSR | S_IXUSR |
-				S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create VPN storage directory");
-	}
-
-	umask(0077);
-
 	main_loop = g_main_loop_new(NULL, FALSE);
 
 	signal = setup_signalfd();
@@ -247,14 +231,34 @@ int main(int argc, char *argv[])
 
 	__connman_log_init(argv[0], option_debug, option_detach, false,
 			"Connection Manager VPN daemon", VERSION);
+
 	__connman_dbus_init(conn);
 
 	if (!option_config)
-		__vpn_settings_init(CONFIGMAINFILE);
+		__vpn_settings_init(CONFIGMAINFILE, CONFIGDIR);
 	else
-		__vpn_settings_init(option_config);
+		__vpn_settings_init(option_config, CONFIGDIR);
 
 	__connman_inotify_init();
+	__connman_storage_init(__vpn_settings_get_storage_root(),
+			__vpn_settings_get_user_storage_dir(),
+			__vpn_settings_get_storage_dir_permissions(),
+			__vpn_settings_get_storage_file_permissions());
+
+	mode_t dir_perm = __vpn_settings_get_storage_dir_permissions();
+	if (__connman_storage_create_dir(VPN_STATEDIR, dir_perm))
+		perror("Failed to create VPN state directory");
+
+	if (__connman_storage_create_dir(VPN_STORAGEDIR, dir_perm)) {
+		perror("Failed to create VPN storage directory");
+	} else {
+		if (__connman_storage_register_dbus(STORAGE_DIR_TYPE_VPN,
+					&storage_callbacks))
+			perror("Failed to register VPN storage D-Bus");
+	}
+
+	umask(__vpn_settings_get_umask());
+
 	__connman_agent_init();
 	__vpn_provider_init();
 	__vpn_manager_init();
@@ -281,6 +285,7 @@ int main(int argc, char *argv[])
 	__vpn_manager_cleanup();
 	__vpn_provider_cleanup();
 	__connman_agent_cleanup();
+	__connman_storage_cleanup();
 	__connman_inotify_cleanup();
 	__connman_dbus_cleanup();
 	__connman_log_cleanup(false);

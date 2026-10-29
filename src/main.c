@@ -43,6 +43,10 @@
 
 #define DEFAULT_INPUT_REQUEST_TIMEOUT (120 * 1000)
 #define DEFAULT_BROWSER_LAUNCH_TIMEOUT (300 * 1000)
+#define DEFAULT_STOGAGE_ROOT_PERMISSIONS (0755)
+#define DEFAULT_STORAGE_DIR_PERMISSIONS (0700)
+#define DEFAULT_STORAGE_FILE_PERMISSIONS (0600)
+#define DEFAULT_UMASK (0077)
 
 #define DEFAULT_ONLINE_CHECK_IPV4_URL "http://ipv4.connman.net/online/status.html"
 #define DEFAULT_ONLINE_CHECK_IPV6_URL "http://ipv6.connman.net/online/status.html"
@@ -117,6 +121,12 @@ static struct {
 	bool single_tech;
 	char **tethering_technologies;
 	bool persistent_tethering_mode;
+	char *storage_root;
+	mode_t storage_root_permissions;
+	mode_t storage_dir_permissions;
+	mode_t storage_file_permissions;
+	mode_t umask;
+	char *user_storage_dir;
 	bool enable_6to4;
 	char *vendor_class_id;
 	bool enable_online_check;
@@ -136,6 +146,7 @@ static struct {
 	char *localtime;
 	bool regdom_follows_timezone;
 	char *resolv_conf;
+	bool enable_login_manager;
 } connman_settings  = {
 	.bg_scan = true,
 	.pref_timeservers = NULL,
@@ -153,6 +164,10 @@ static struct {
 	.single_tech = false,
 	.tethering_technologies = NULL,
 	.persistent_tethering_mode = false,
+	.storage_root_permissions = DEFAULT_STOGAGE_ROOT_PERMISSIONS,
+	.storage_dir_permissions = DEFAULT_STORAGE_DIR_PERMISSIONS,
+	.storage_file_permissions = DEFAULT_STORAGE_FILE_PERMISSIONS,
+	.umask = DEFAULT_UMASK,
 	.enable_6to4 = false,
 	.vendor_class_id = NULL,
 	.enable_online_check = true,
@@ -173,6 +188,7 @@ static struct {
 	.use_gateways_as_timeservers = false,
 	.localtime = NULL,
 	.resolv_conf = NULL,
+	.enable_login_manager = false,
 };
 
 #define CONF_BG_SCAN                    "BackgroundScanning"
@@ -191,6 +207,12 @@ static struct {
 #define CONF_SINGLE_TECH                "SingleConnectedTechnology"
 #define CONF_TETHERING_TECHNOLOGIES      "TetheringTechnologies"
 #define CONF_PERSISTENT_TETHERING_MODE  "PersistentTetheringMode"
+#define CONF_STORAGE_ROOT               "StorageRoot"
+#define CONF_STORAGE_ROOT_PERMISSIONS   "StorageRootPermissions"
+#define CONF_STORAGE_DIR_PERMISSIONS    "StorageDirPermissions"
+#define CONF_STORAGE_FILE_PERMISSIONS   "StorageFilePermissions"
+#define CONF_USER_STORAGE_DIR           "UserStorage"
+#define CONF_UMASK                      "Umask"
 #define CONF_ENABLE_6TO4                "Enable6to4"
 #define CONF_VENDOR_CLASS_ID            "VendorClassID"
 #define CONF_ENABLE_ONLINE_CHECK        "EnableOnlineCheck"
@@ -210,6 +232,7 @@ static struct {
 #define CONF_LOCALTIME                  "Localtime"
 #define CONF_REGDOM_FOLLOWS_TIMEZONE    "RegdomFollowsTimezone"
 #define CONF_RESOLV_CONF                "ResolvConf"
+#define CONF_ENABLE_LOGIN_MANAGER       "EnableLoginManager"
 
 static const char *supported_options[] = {
 	CONF_BG_SCAN,
@@ -228,6 +251,12 @@ static const char *supported_options[] = {
 	CONF_SINGLE_TECH,
 	CONF_TETHERING_TECHNOLOGIES,
 	CONF_PERSISTENT_TETHERING_MODE,
+	CONF_STORAGE_ROOT,
+	CONF_STORAGE_ROOT_PERMISSIONS,
+	CONF_STORAGE_DIR_PERMISSIONS,
+	CONF_STORAGE_FILE_PERMISSIONS,
+	CONF_USER_STORAGE_DIR,
+	CONF_UMASK,
 	CONF_ENABLE_6TO4,
 	CONF_VENDOR_CLASS_ID,
 	CONF_ENABLE_ONLINE_CHECK,
@@ -247,6 +276,7 @@ static const char *supported_options[] = {
 	CONF_LOCALTIME,
 	CONF_REGDOM_FOLLOWS_TIMEZONE,
 	CONF_RESOLV_CONF,
+	CONF_ENABLE_LOGIN_MANAGER,
 	NULL
 };
 
@@ -266,7 +296,7 @@ static GKeyFile *load_config(const char *file)
 		}
 
 		g_error_free(err);
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 		return NULL;
 	}
 
@@ -427,6 +457,29 @@ static void online_check_settings_log(void)
 
 	connman_info("Online check continuous mode successes threshold %d",
 		connman_settings.online_check_successes_threshold);
+}
+
+static gboolean parse_perm(GKeyFile *config, const char *group,
+					const char *key, mode_t *perm)
+{
+	gboolean ok = FALSE;
+	char *str = g_key_file_get_string(config, group, key, NULL);
+	if (str) {
+		/*
+		 * Some people are thinking that # is a comment
+		 * anywhere on the line, not just at the beginning
+		 */
+		unsigned long val;
+		char *comment = strchr(str, '#');
+		if (comment) *comment = 0;
+		val = strtoul(g_strstrip(str), NULL, 0);
+		if (val > 0 && !(val & ~0777UL)) {
+			*perm = (mode_t)val;
+			ok = TRUE;
+		}
+		g_free(str);
+	}
+	return ok;
 }
 
 static void parse_config(GKeyFile *config, const char *file)
@@ -621,6 +674,32 @@ static void parse_config(GKeyFile *config, const char *file)
 
 	g_clear_error(&error);
 
+	connman_settings.storage_root = __connman_config_get_string(config,
+				GENERAL_GROUP, CONF_STORAGE_ROOT, &error);
+	if (error)
+		connman_settings.storage_root = g_strdup(DEFAULT_STORAGE_ROOT);
+
+	g_clear_error(&error);
+
+	connman_settings.user_storage_dir = __connman_config_get_string(config,
+				GENERAL_GROUP, CONF_USER_STORAGE_DIR, &error);
+	if (error)
+		connman_settings.user_storage_dir =
+						g_strdup(DEFAULT_USER_STORAGE);
+
+	g_clear_error(&error);
+
+	parse_perm(config, GENERAL_GROUP, CONF_STORAGE_ROOT_PERMISSIONS,
+				&connman_settings.storage_root_permissions);
+
+	parse_perm(config, GENERAL_GROUP, CONF_STORAGE_DIR_PERMISSIONS,
+				&connman_settings.storage_dir_permissions);
+
+	parse_perm(config, GENERAL_GROUP, CONF_STORAGE_FILE_PERMISSIONS,
+				&connman_settings.storage_file_permissions);
+
+	parse_perm(config, GENERAL_GROUP, CONF_UMASK, &connman_settings.umask);
+
 	boolean = __connman_config_get_bool(config, GENERAL_GROUP,
 					CONF_ENABLE_6TO4, &error);
 	if (!error)
@@ -709,6 +788,13 @@ static void parse_config(GKeyFile *config, const char *file)
 	else
 		connman_settings.online_check_ipv4_url =
 			g_strdup(DEFAULT_ONLINE_CHECK_IPV4_URL);
+
+	g_clear_error(&error);
+
+	boolean = __connman_config_get_bool(config, GENERAL_GROUP,
+				CONF_ENABLE_LOGIN_MANAGER, &error);
+	if (!error)
+		connman_settings.enable_login_manager = boolean;
 
 	g_clear_error(&error);
 
@@ -861,7 +947,7 @@ static int config_init(const char *file)
 	check_config(config, file);
 	parse_config(config, file);
 	if (config)
-		g_key_file_free(config);
+		g_key_file_unref(config);
 
 	return 0;
 }
@@ -1092,6 +1178,9 @@ bool connman_setting_get_bool(const char *key)
 	if (g_str_equal(key, CONF_REGDOM_FOLLOWS_TIMEZONE))
 		return connman_settings.regdom_follows_timezone;
 
+	if (g_str_equal(key, CONF_ENABLE_LOGIN_MANAGER))
+		return connman_settings.enable_login_manager;
+
 	return false;
 }
 
@@ -1165,6 +1254,14 @@ unsigned int connman_timeout_browser_launch(void)
 	return connman_settings.timeout_browserlaunch;
 }
 
+static struct connman_storage_callbacks storage_callbacks = {
+	.pre =		__connman_technology_disable_all,
+	.unload =	__connman_service_unload_services,
+	.load =		__connman_service_load_services,
+	.post =		__connman_technology_enable_from_config,
+	.uid_changed =	__connman_notifier_storage_uid_changed,
+};
+
 int main(int argc, char *argv[])
 {
 	GOptionContext *context;
@@ -1172,6 +1269,7 @@ int main(int argc, char *argv[])
 	DBusConnection *conn;
 	DBusError err;
 	guint signal;
+	int fs_err;
 
 	context = g_option_context_new(NULL);
 	g_option_context_add_main_entries(context, options, NULL);
@@ -1198,14 +1296,6 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	}
-
-	if (mkdir(STORAGEDIR, S_IRUSR | S_IWUSR | S_IXUSR |
-				S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
-		if (errno != EEXIST)
-			perror("Failed to create storage directory");
-	}
-
-	umask(0077);
 
 	main_loop = g_main_loop_new(NULL, FALSE);
 
@@ -1235,8 +1325,36 @@ int main(int argc, char *argv[])
 	else
 		config_init(option_config);
 
-	__connman_util_init();
 	__connman_inotify_init();
+	__connman_storage_init(connman_settings.storage_root,
+				connman_settings.user_storage_dir,
+				connman_settings.storage_dir_permissions,
+				connman_settings.storage_file_permissions);
+
+	fs_err = __connman_storage_create_dir(connman_settings.storage_root,
+				connman_settings.storage_root_permissions);
+	if (fs_err)
+		connman_error("failed to create storage root %s: %s "
+					"settings cannot be saved.",
+					connman_settings.storage_root,
+					strerror(-fs_err));
+
+	fs_err = __connman_storage_create_dir(STORAGEDIR,
+				connman_settings.storage_dir_permissions);
+	if (fs_err) {
+		connman_error("failed to create storage directory %s: %s "
+					"settings cannot be saved",
+					STORAGEDIR, strerror(-fs_err));
+	} else {
+		if (__connman_storage_register_dbus(STORAGE_DIR_TYPE_MAIN,
+					&storage_callbacks))
+			connman_error("failed to register storage D-Bus");
+	}
+
+	umask(connman_settings.umask);
+
+	__connman_login_manager_init();
+	__connman_util_init();
 	__connman_technology_init();
 	__connman_notifier_init();
 	__connman_agent_init();
@@ -1322,6 +1440,8 @@ int main(int argc, char *argv[])
 	__connman_ipconfig_cleanup();
 	__connman_notifier_cleanup();
 	__connman_technology_cleanup();
+	__connman_login_manager_cleanup();
+	__connman_storage_cleanup();
 	__connman_inotify_cleanup();
 
 	__connman_util_cleanup();
@@ -1346,6 +1466,8 @@ int main(int argc, char *argv[])
 	g_free(connman_settings.online_check_ipv4_url);
 	g_free(connman_settings.online_check_ipv6_url);
 	g_free(connman_settings.localtime);
+	g_free(connman_settings.storage_root);
+	g_free(connman_settings.user_storage_dir);
 
 	g_free(option_debug);
 	g_free(option_wifi);

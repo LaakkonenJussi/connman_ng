@@ -129,13 +129,17 @@ src_connmand_SOURCES = $(gdhcp_sources) $(gweb_sources) $(stats_sources) \
 			src/6to4.c src/ippool.c src/bridge.c src/nat.c \
 			src/ipaddress.c src/inotify.c src/ipv6pd.c src/peer.c \
 			src/peer_service.c src/machine.c src/util.c \
-			src/acd.c
+			src/acd.c src/login_manager.c
 
 if INTERNAL_DNS_BACKEND
 src_connmand_SOURCES += src/dnsproxy.c
 endif
 if SYSTEMD_RESOLVED_DNS_BACKEND
 src_connmand_SOURCES += src/dns-systemd-resolved.c
+endif
+
+if SYSTEMD_LOGIN
+src_connmand_SOURCES += src/systemd_login.c
 endif
 
 src_connmand_LDADD = gdbus/libgdbus-internal.la $(builtin_libadd) \
@@ -214,8 +218,11 @@ plugindir = $(libdir)/connman/plugins
 
 scriptdir = $(libdir)/connman/scripts
 
-storagedir = $(localstatedir)/lib/connman
-vpn_storagedir = $(localstatedir)/lib/connman-vpn
+storageroot = $(localstatedir)/lib
+
+# Path in users' home dir to use as a storage dir. connman/connman-vpn will
+# be created when omitted.
+userstorage = ".config"
 
 configdir = ${sysconfdir}/connman
 
@@ -236,12 +243,11 @@ endif
 AM_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				@GNUTLS_CFLAGS@ $(builtin_cflags) \
 				-DCONNMAN_PLUGIN_BUILTIN \
-				-DSTATEDIR=\""$(statedir)"\" \
+				-DDEFAULT_VPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-DVPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-DPLUGINDIR=\""$(build_plugindir)"\" \
 				-DSCRIPTDIR=\""$(build_scriptdir)"\" \
-				-DSTORAGEDIR=\""$(storagedir)\"" \
-				-DVPN_STORAGEDIR=\""$(vpn_storagedir)\"" \
+				-DDEFAULT_STORAGE_ROOT=\""$(storageroot)\"" \
 				-DRUNSTATEDIR=\""$(runstatedir)"\" \
 				-DCONFIGDIR=\""$(configdir)\""
 
@@ -257,9 +263,11 @@ src_connmand_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				-DSTATEDIR=\""$(statedir)"\" \
 				-DPLUGINDIR=\""$(build_plugindir)"\" \
 				-DSCRIPTDIR=\""$(build_scriptdir)"\" \
-				-DSTORAGEDIR=\""$(storagedir)\"" \
-				-DVPN_STORAGEDIR=\""$(vpn_storagedir)\"" \
-				-DCONFIGDIR=\""$(configdir)\"" \
+				-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+				-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+				-DRUNSTATEDIR=\""$(runstatedir)"\" \
+				-DCONFIGDIR=\""$(configdir)"\" \
+				-DDEFAULT_VPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-I$(builddir)/src
 
 EXTRA_DIST = src/genbuiltin src/connman-dbus.conf src/connman-polkit.conf \
@@ -270,13 +278,13 @@ if VPN
 vpn_connman_vpnd_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ \
 				$(builtin_vpn_cflags) \
 				-DCONNMAN_PLUGIN_BUILTIN \
-				-DVPN_STATEDIR=\""$(vpn_statedir)"\" \
+				-DDEFAULT_VPN_STATEDIR=\""$(vpn_statedir)"\" \
 				-DPLUGINDIR=\""$(build_vpn_plugindir)"\" \
 				-DSCRIPTDIR=\""$(build_scriptdir)"\" \
-				-DSTORAGEDIR=\""$(storagedir)\"" \
-				-DVPN_STORAGEDIR=\""$(vpn_storagedir)\"" \
+				-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+				-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
 				-DRUNSTATEDIR=\""$(runstatedir)"\" \
-				-DCONFIGDIR=\""$(configdir)\"" \
+				-DCONFIGDIR=\""$(configdir)"\" \
 				-I$(builddir)/vpn
 
 endif
@@ -376,11 +384,15 @@ tools_polkit_test_LDADD = @DBUS_LIBS@
 
 tools_private_network_test_LDADD = @GLIB_LIBS@ @DBUS_LIBS@
 
-tools_session_test_SOURCES = $(backtrace_sources) src/log.c src/dbus.c src/error.c \
+tools_session_test_SOURCES = $(backtrace_sources) src/log.c src/dbus.c \
+		src/error.c src/storage.c src/inotify.c \
 		tools/session-test.c tools/session-utils.c tools/manager-api.c \
 		tools/session-api.c tools/session-test.h
 tools_session_test_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ -ldl
+tools_session_test_CFLAGS = $(AM_CFLAGS) \
+		-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+		-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\"
 
 if XTABLES
 noinst_PROGRAMS += tools/iptables-test tools/ip6tables-test tools/iptables-unit \
@@ -395,11 +407,15 @@ tools_ip6tables_test_SOURCES = $(backtrace_sources) src/log.c src/iptables.c \
 tools_ip6tables_test_LDADD = @GLIB_LIBS@ @XTABLES_LIBS@ -ldl
 
 tools_iptables_unit_CFLAGS = @DBUS_CFLAGS@ @GLIB_CFLAGS@ @XTABLES_CFLAGS@ \
+		-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
 		-DIPTABLES_SAVE=\""${IPTABLES_SAVE}"\" \
+		-DIP6TABLES_SAVE=\""${IP6TABLES_SAVE}"\" \
+		-DDEFAULT_STORAGE_ROOT=\""$(storageroot)"\" \
+		-DCONFIGDIR=\""$(testconfigdir)"\"
 		-DIP6TABLES_SAVE=\""${IP6TABLES_SAVE}"\"
 tools_iptables_unit_SOURCES = $(backtrace_sources) src/log.c \
 		src/iptables.c src/firewall-iptables.c src/nat.c \
-		tools/iptables-unit.c
+		src/storage.c src/inotify.c tools/iptables-unit.c src/error.c src/dbus.c
 tools_iptables_unit_LDADD = gdbus/libgdbus-internal.la \
 				@GLIB_LIBS@ @DBUS_LIBS@ @XTABLES_LIBS@ -ldl
 
@@ -544,8 +560,6 @@ do_subst = $(AM_V_GEN)$(SED) \
 		-e 's,[@]prefix[@],$(prefix),g' \
 		-e 's,[@]sbindir[@],$(sbindir),g' \
 		-e 's,[@]sysconfdir[@],$(sysconfdir),g' \
-		-e 's,[@]storagedir[@],$(storagedir),g' \
-		-e 's,[@]vpn_storagedir[@],$(vpn_storagedir),g' \
 		-e 's,[@]localstatedir[@],$(localstatedir),g' \
 		-e 's,[@]runstatedir[@],$(runstatedir),g'
 
