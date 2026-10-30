@@ -292,12 +292,14 @@ int connman_inet_check_ipaddress(const char *host)
 	return 0;
 }
 
-int connman_inotify_register(const char *path, inotify_event_cb callback)
+int connman_inotify_register(const char *path, inotify_event_cb callback,
+				gpointer user_data, GDestroyNotify free_func)
 {
 	return 0;
 }
 
-void connman_inotify_unregister(const char *path, inotify_event_cb callback)
+void connman_inotify_unregister(const char *path, inotify_event_cb callback,
+				gpointer user_data)
 {
 	return;
 }
