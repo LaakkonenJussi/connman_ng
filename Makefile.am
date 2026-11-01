@@ -336,6 +336,22 @@ LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
 
 TESTS = unit/test-ippool
 
+noinst_PROGRAMS += unit/test-storage
+
+# Workaround for redefining the DEFAULT_STORAGE_ROOT
+unit_test_storage_CFLAGS = -DDEFAULT_TMPDIR=\""$(testconfigdir)"\" \
+				-DDEFAULT_USER_STORAGE=\""$(userstorage)"\" \
+				-include unit/test-storage_helper.h \
+				$(COVERAGE_OPT) $(AM_CFLAGS) @DBUS_CFLAGS@
+unit_test_storage_SOURCES = unit/test-storage.c $(backtrace_sources) \
+				src/connman.h src/log.c src/error.c \
+				src/inotify.c src/storage.c src/technology.c
+unit_test_storage_LDADD = @GLIB_LIBS@ @DBUS_LIBS@ -ldl
+
+TESTS += unit/test-storage
+
+EXTRA_DIST += unit/test-storage_helper.h
+
 if WISPR
 noinst_PROGRAMS += tools/wispr
 
