@@ -224,6 +224,7 @@ struct connman_service {
 	bool hidden_service;
 	char *config_file;
 	char *config_entry;
+	bool removing;
 };
 
 static bool allow_property_changed(struct connman_service *service);
@@ -552,7 +553,7 @@ int __connman_service_load_modifiable(struct connman_service *service)
 		g_free(str);
 	}
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return 0;
 }
@@ -821,7 +822,7 @@ static int service_load(struct connman_service *service)
 					service->identifier, "Hidden", NULL);
 
 done:
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return err;
 }
@@ -1002,7 +1003,7 @@ static int service_save(struct connman_service *service)
 done:
 	__connman_storage_save_service(keyfile, service->identifier);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return err;
 }
@@ -4500,6 +4501,14 @@ bool connman_service_set_autoconnect(struct connman_service *service,
 	return true;
 }
 
+static void service_set_removing(struct connman_service *service,
+							bool removing)
+{
+	const bool newval = removing ? true : false;
+	if (service->removing != newval)
+		service->removing = newval;
+}
+
 static void append_security(DBusMessageIter *iter, void *user_data)
 {
 	struct connman_service *service = user_data;
@@ -6071,7 +6080,7 @@ static DBusMessage *get_properties(DBusConnection *conn,
 
 	reply = dbus_message_new_method_return(msg);
 	if (!reply)
-		return NULL;
+		return __connman_error_failed(msg, ENOMEM);
 
 	dbus_message_iter_init_append(reply, &array);
 
@@ -7433,6 +7442,27 @@ bool __connman_service_remove(struct connman_service *service)
 
 	if (!service->favorite && !is_idle(service->state))
 		return false;
+
+	/*
+	 * We don't want the service files to stay around forever unless the
+	 * service file belongs to a VPN connection, or it is a new service.
+	 *
+	 * The VPN connection specific configuration files contain autoconnect
+	 * and split routing information that should be kept between connman
+	 * restarts. Otherwise autoconnect for VPNs cannot operate. The VPN
+	 * connection service file is removed when vpnd removes the connection.
+	 * It should not be removed here.
+	 */
+	if (service->type != CONNMAN_SERVICE_TYPE_VPN &&
+							!service->new_service) {
+		__connman_storage_remove_service(service->identifier);
+
+		/*
+		 * Prevent other IP family type from propagating in state
+		 * machine after one is disconnected during removal.
+		 */
+		service_set_removing(service, true);
+	}
 
 	__connman_service_disconnect(service);
 	if (service->network)
@@ -9316,6 +9346,13 @@ static int service_indicate_state(struct connman_service *service)
 		break;
 
 	case CONNMAN_SERVICE_STATE_READY:
+		/*
+		 * If the service is being removed and when the other IP type
+		 * is in ready state (most likely IPv6)
+		 */
+		if (service->removing)
+			break;
+
 		clear_error(service);
 
 		if (service->new_service &&
@@ -9437,6 +9474,13 @@ notifier:
 			new_state != CONNMAN_SERVICE_STATE_ONLINE)) {
 		__connman_notifier_disconnect(service->type);
 	}
+
+	/*
+	 * If the service is being removed and is either ready or online skip
+	 * any remaining actions.
+	 */
+	if (is_connected(new_state) && service->removing)
+		return 0;
 
 	if (is_online(new_state)) {
 		__connman_notifier_enter_online(service->type);
@@ -10181,6 +10225,112 @@ static struct connman_service *service_get(const char *identifier)
 	return service;
 }
 
+static void service_removed(void *data)
+{
+	struct connman_service *service = data;
+
+	service_schedule_removed(service);
+	connman_service_unref(service);
+}
+
+/* Deduce the security type from the service identifier */
+static enum connman_service_security security_from_ident(const char *ident)
+{
+	const char *str = NULL;
+
+	if (ident) {
+		const char *sep = strrchr(ident, '_');
+
+		if (sep) {
+			str = sep + 1;
+		}
+	}
+
+	return __connman_service_string2security(str);
+}
+
+static inline char *service_path(const char *ident)
+{
+	return g_strconcat(CONNMAN_PATH, "/service/", ident, NULL);
+}
+
+static struct connman_service *service_create_from_ident(
+						enum connman_service_type type,
+						const char *ident)
+{
+	struct connman_service *service = connman_service_create();
+
+	service->identifier = g_strdup(ident);
+	service->path = service_path(ident);
+	service->type = type;
+	service->security = security_from_ident(ident);
+	stats_init(service);
+	return service;
+}
+
+static void service_initialize_loaded(struct connman_service *service)
+{
+	/* Autoconnect is confused by the UNKNOWN state */
+	service->state = service->state_ipv4 = service->state_ipv6 =
+						CONNMAN_SERVICE_STATE_IDLE;
+
+	g_hash_table_replace(service_hash, service->identifier, service);
+	service_list = g_list_insert_sorted(service_list,
+			connman_service_ref(service), service_compare);
+
+	connman_service_create_ip4config(service, -1);
+	connman_service_create_ip6config(service, -1);
+
+	/* Register only the interface as the service is loaded before. */
+	g_dbus_register_interface(connection, service->path,
+				CONNMAN_SERVICE_INTERFACE, service_methods,
+				service_signals, NULL, service, NULL);
+}
+
+static void load_wifi_service(const char *ident)
+{
+	struct connman_service *service = service_create_from_ident(
+					CONNMAN_SERVICE_TYPE_WIFI, ident);
+
+	if (service_load(service) == 0) {
+		DBG("service %p path %s", service, service->path);
+		service_initialize_loaded(service);
+		// TODO: check if this can be dropped, also the ref() from above
+		connman_service_unref(service);
+	} else {
+		service_free(service);
+	}
+}
+
+static gboolean load_wifi_services(gpointer unused)
+{
+	char **services = connman_storage_get_services();
+
+	if (services) {
+		int i;
+
+		for (i = 0; services[i]; i++) {
+			const char *ident = services[i];
+			const enum connman_service_type type =
+				__connman_service_string2type(ident);
+
+			DBG("service %d:%s", i, services[i]);
+
+			if (type == CONNMAN_SERVICE_TYPE_WIFI &&
+					!g_hash_table_contains(service_hash,
+								ident))
+				load_wifi_service(ident);
+			else if (g_hash_table_contains(service_hash, ident))
+				DBG("is in hash table, not loaded");
+		}
+
+		g_strfreev(services);
+		SERVICE_LIST_SORT();
+	}
+
+	return G_SOURCE_REMOVE;
+}
+
 static int service_register(struct connman_service *service)
 {
 	DBG("service %p", service);
@@ -10398,7 +10548,7 @@ void __connman_service_read_ip4config(struct connman_service *service)
 	__connman_ipconfig_load(service->ipconfig_ipv4, keyfile,
 				service->identifier, "IPv4.");
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 void connman_service_create_ip4config(struct connman_service *service,
@@ -10428,7 +10578,7 @@ void __connman_service_read_ip6config(struct connman_service *service)
 	__connman_ipconfig_load(service->ipconfig_ipv6, keyfile,
 				service->identifier, "IPv6.");
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 void connman_service_create_ip6config(struct connman_service *service,
@@ -10968,10 +11118,10 @@ static void remove_unprovisioned_services(void)
 
 	next:
 		if (keyfile)
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 
 		if (configkeyfile)
-			g_key_file_free(configkeyfile);
+			g_key_file_unref(configkeyfile);
 
 		g_free(section);
 		g_free(file);
@@ -11013,6 +11163,60 @@ static struct connman_agent_driver agent_driver = {
 	.context_ref	= agent_context_ref,
 	.context_unref	= agent_context_unref,
 };
+
+/* This is used as a callback for user change unload services. */
+void __connman_service_unload_services(gchar **services, int len)
+{
+	struct connman_service *service;
+	int i;
+
+	DBG("services %d/%p", len, services);
+
+	if (!services)
+		return;
+
+	for (i = 0; i < len && services[i]; i++) {
+		DBG("service %d:%s", i, services[i]);
+
+		service = connman_service_lookup_from_identifier(services[i]);
+		if (!service) {
+			DBG("no service for %s", services[i]);
+			continue;
+		}
+
+		switch (connman_service_get_type(service)) {
+		case CONNMAN_SERVICE_TYPE_WIFI:
+			if (service->network)
+				__connman_service_remove_from_network(
+							service->network);
+			break;
+		case CONNMAN_SERVICE_TYPE_VPN:
+			break;
+		default:
+			DBG("skip non WiFi/VPN %p/%s", service,
+						service->identifier);
+			continue;
+		}
+
+		if (!__connman_service_remove(service))
+			connman_warn("cannot unload service %s", services[i]);
+	}
+
+	/*
+	 * Immediately inform about the service changes. If there were
+	 * services removed the services_notify->id is set.
+	 */
+	if (services_notify->id != 0) {
+		g_source_remove(services_notify->id);
+		services_notify->id = 0;
+		service_send_changed(NULL);
+	}
+}
+
+void __connman_service_load_services(void)
+{
+	load_wifi_services(NULL);
+}
 
 int __connman_service_init(void)
 {

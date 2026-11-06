@@ -3,6 +3,7 @@
  *  ConnMan VPN daemon
  *
  *  Copyright (C) 2012-2013  Intel Corporation. All rights reserved.
+ *  Copyright (C) 2014-2020  Jolla Ltd. All rights reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -96,6 +97,7 @@ int __vpn_provider_remove(const char *path);
 int __vpn_provider_delete(struct vpn_provider *provider);
 void __vpn_provider_cleanup(void);
 int __vpn_provider_init();
+const char *__vpn_provider_get_connman_dbus_name(void);
 
 #include "vpn-rtnl.h"
 
@@ -114,10 +116,22 @@ char **__vpn_config_get_string_list(GKeyFile *key_file, const char *group_name,
 bool __vpn_config_get_boolean(GKeyFile *key_file, const char *group_name,
 			const char *key, bool default_value);
 
-int __vpn_settings_init(const char *file);
+#ifndef VPN_STATEDIR
+#define VPN_STATEDIR vpn_settings_get_state_dir()
+#endif
+
+const char *vpn_settings_get_state_dir(void);
+int __vpn_settings_init(const char *file, const char *dir);
 void __vpn_settings_cleanup(void);
 GKeyFile *__vpn_settings_load_config(const char *file);
 unsigned int __vpn_settings_get_timeout_inputreq(void);
+
+const char *__vpn_settings_get_storage_root(void);
+const char *__vpn_settings_get_user_storage_dir(void);
+mode_t __vpn_settings_get_storage_dir_permissions(void);
+mode_t __vpn_settings_get_storage_file_permissions(void);
+mode_t __vpn_settings_get_umask(void);
+void __vpn_settings_set_binary_user_override(uid_t uid, void *user_data);
 
 struct vpn_plugin_data;
 
@@ -129,7 +143,15 @@ const char * vpn_settings_get_binary_user(struct vpn_plugin_data *data);
 const char * vpn_settings_get_binary_group(struct vpn_plugin_data *data);
 char ** vpn_settings_get_binary_supplementary_groups(
 	struct vpn_plugin_data *data);
-bool vpn_settings_is_system_user(const char *user);
+
+enum vpn_settings_user_type {
+	VPN_SETTINGS_USER_TYPE_NOT_SET = 0,
+	VPN_SETTINGS_USER_TYPE_NOT_FOUND,
+	VPN_SETTINGS_USER_TYPE_REGULAR,
+	VPN_SETTINGS_USER_TYPE_SYSTEM,
+};
+
+enum vpn_settings_user_type vpn_settings_get_user_type(const char *user);
 
 struct passwd *vpn_util_get_passwd(const char *username);
 struct group *vpn_util_get_group(const char *groupname);

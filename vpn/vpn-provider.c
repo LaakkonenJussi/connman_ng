@@ -124,8 +124,9 @@ static unsigned int get_connman_state_timeout;
 static guint connman_signal_watch;
 static guint connman_service_watch;
 
-static bool connman_online;
-static bool state_query_completed;
+static bool connman_online = false;
+static bool state_query_completed = false;
+static char *connman_dbus_name = NULL;
 
 static void append_properties(DBusMessageIter *iter,
 				struct vpn_provider *provider);
@@ -1144,7 +1145,7 @@ static int provider_load_from_keyfile(struct vpn_provider *provider,
 	settings = g_key_file_get_keys(keyfile, provider->identifier, &length,
 				NULL);
 	if (!settings) {
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 		return -ENOENT;
 	}
 
@@ -1190,7 +1191,7 @@ static int vpn_provider_load(struct vpn_provider *provider)
 
 	provider_load_from_keyfile(provider, keyfile);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 	return 0;
 }
 
@@ -1258,6 +1259,7 @@ static int vpn_provider_save(struct vpn_provider *provider)
 {
 	GKeyFile *keyfile;
 	const char *value;
+	int err;
 
 	DBG("provider %p immutable %s", provider,
 					provider->immutable ? "yes" : "no");
@@ -1321,10 +1323,14 @@ static int vpn_provider_save(struct vpn_provider *provider)
 	if (provider->driver && provider->driver->save)
 		provider->driver->save(provider, keyfile);
 
-	__connman_storage_save_provider(keyfile, provider->identifier);
-	g_key_file_free(keyfile);
+	err = __connman_storage_save_provider(keyfile, provider->identifier);
+	if (err)
+		connman_error("Provider %s was not saved: %s",
+					provider->identifier, strerror(-err));
 
-	return 0;
+	g_key_file_unref(keyfile);
+
+	return err;
 }
 
 struct vpn_provider *__vpn_provider_lookup(const char *identifier)
@@ -2360,7 +2366,7 @@ static void provider_create_all_from_type(const char *provider_type)
 
 		if (strcmp(provider_type, type) != 0) {
 			g_free(type);
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 
@@ -2368,7 +2374,7 @@ static void provider_create_all_from_type(const char *provider_type)
 			DBG("could not create provider");
 
 		g_free(type);
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 	}
 	g_strfreev(providers);
 }
@@ -3441,16 +3447,61 @@ static void remove_unprovisioned_providers(void)
 
 	next:
 		if (keyfile)
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 
 		if (configkeyfile)
-			g_key_file_free(configkeyfile);
+			g_key_file_unref(configkeyfile);
 
 		g_free(section);
 		g_free(file);
 	}
 
 	g_strfreev(providers);
+}
+
+void vpn_provider_unload_providers(char **providers, int len)
+{
+	struct vpn_provider *provider;
+	char *identifier;
+	int i;
+
+	DBG("providers %d/%p", len, providers);
+
+	if (!providers)
+		return;
+
+	for (i = 0; i < len && providers[i]; i++) {
+		if (strncmp(providers[i], "provider_", 9))
+			continue;
+
+		DBG("provider %d:%s", i, providers[i]);
+		identifier = providers[i] + 9;
+
+		provider = __vpn_provider_lookup(identifier);
+		if (!provider)
+			continue;
+
+		if (__vpn_provider_delete(provider))
+			DBG("cannot unload provider %s", providers[i]);
+	}
+}
+
+static void load_providers_for_driver(gpointer data, gpointer user_data)
+{
+	struct vpn_provider_driver *driver = data;
+
+	if (!driver)
+		return;
+
+	DBG("loading driver %p name %s", driver, driver->name);
+	provider_create_all_from_type(driver->name);
+}
+
+void vpn_provider_load_providers()
+{
+	DBG("");
+	g_slist_foreach(driver_list, load_providers_for_driver, NULL);
+	remove_unprovisioned_providers();
 }
 
 static gboolean connman_property_changed(DBusConnection *conn,
@@ -3507,6 +3558,7 @@ static void get_connman_state_reply(DBusPendingCall *call, void *user_data)
 
 	const char *key;
 	const char *str;
+	const char *sender_name;
 
 	DBG("");
 
@@ -3540,6 +3592,19 @@ static void get_connman_state_reply(DBusPendingCall *call, void *user_data)
 			signature);
 
 		goto done;
+	}
+
+	sender_name = dbus_message_get_sender(reply);
+
+	if (!connman_dbus_name) {
+		connman_dbus_name = g_strdup(sender_name);
+		DBG("Got connman dbus sender name: %s", connman_dbus_name);
+	} else {
+		if (g_strcmp0(connman_dbus_name, sender_name)) {
+			connman_error("D-Bus state reply from %s, expected %s",
+					connman_dbus_name, sender_name);
+			goto done;
+		}
 	}
 
 	if (!dbus_message_iter_init(reply, &array))
@@ -3660,6 +3725,15 @@ static void connman_service_watch_disconnected(DBusConnection *conn,
 
 	/* Set state query variable to initial state */
 	state_query_completed = false;
+
+	/* Drop the D-Bus connection name */
+	g_free(connman_dbus_name);
+	connman_dbus_name = NULL;
+}
+
+const char *__vpn_provider_get_connman_dbus_name()
+{
+	return connman_dbus_name;
 }
 
 int __vpn_provider_init(void)
@@ -3718,4 +3792,7 @@ void __vpn_provider_cleanup(void)
 	g_dbus_remove_watch(connection, connman_signal_watch);
 
 	dbus_connection_unref(connection);
+
+	g_free(connman_dbus_name);
+	connman_dbus_name = NULL;
 }
