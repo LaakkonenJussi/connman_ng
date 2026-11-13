@@ -1083,14 +1083,14 @@ static int get_hidden_connections(GSupplicantScanParams *scan_data)
 		value = g_key_file_get_boolean(keyfile,
 					services[i], "Hidden", NULL);
 		if (!value) {
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 
 		value = g_key_file_get_boolean(keyfile,
 					services[i], "Favorite", NULL);
 		if (!value) {
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 
@@ -1108,7 +1108,7 @@ static int get_hidden_connections(GSupplicantScanParams *scan_data)
 
 		g_free(ssid);
 		g_free(name);
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 	}
 
 	/*
@@ -1715,7 +1715,7 @@ static int get_latest_connections(int max_ssids,
 					services[i], "Favorite", NULL);
 		if (!str || g_strcmp0(str, "true")) {
 			g_free(str);
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 		g_free(str);
@@ -1724,7 +1724,7 @@ static int get_latest_connections(int max_ssids,
 					services[i], "AutoConnect", NULL);
 		if (!str || g_strcmp0(str, "true")) {
 			g_free(str);
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 		g_free(str);
@@ -1732,7 +1732,7 @@ static int get_latest_connections(int max_ssids,
 		str = g_key_file_get_string(keyfile,
 					services[i], "Modified", NULL);
 		if (!str) {
-			g_key_file_free(keyfile);
+			g_key_file_unref(keyfile);
 			continue;
 		}
 		util_iso8601_to_timeval(str, &modified);
@@ -1747,7 +1747,7 @@ static int get_latest_connections(int max_ssids,
 			entry = g_try_new(struct last_connected, 1);
 			if (!entry) {
 				g_sequence_free(latest_list);
-				g_key_file_free(keyfile);
+				g_key_file_unref(keyfile);
 				g_free(ssid);
 				return -ENOMEM;
 			}
@@ -1762,7 +1762,7 @@ static int get_latest_connections(int max_ssids,
 		} else
 			g_free(ssid);
 
-		g_key_file_free(keyfile);
+		g_key_file_unref(keyfile);
 	}
 
 	g_strfreev(services);

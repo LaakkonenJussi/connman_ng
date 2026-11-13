@@ -42,6 +42,7 @@
 #include <connman/notifier.h>
 #include <connman/vpn-dbus.h>
 #include <connman/inet.h>
+#include <connman/storage.h>
 #include <gweb/gresolv.h>
 
 #define DBUS_TIMEOUT 10000
@@ -2221,7 +2222,13 @@ static void vpn_service_state_changed(struct connman_service *service,
 	vpn_disconnect_check();
 }
 
-static const struct connman_notifier vpn_notifier = {
+static void vpn_finalize(uid_t uid, void *user_data)
+{
+	if (get_connections(user_data) != -EINPROGRESS)
+		connman_warn("cannot retrieve VPN connections");
+}
+
+static struct connman_notifier vpn_notifier = {
 	.name                   = "vpn",
 	.priority               = CONNMAN_NOTIFIER_PRIORITY_DEFAULT,
 	.default_changed        = vpn_service_list_changed,
@@ -2271,6 +2278,8 @@ static int vpn_init(void)
 	}
 
 	connman_notifier_register(&vpn_notifier);
+	connman_storage_update_finalize_cb(vpn_finalize, &provider_driver);
+
 	return err;
 
 remove:

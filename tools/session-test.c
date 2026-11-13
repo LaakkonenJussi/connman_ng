@@ -32,7 +32,7 @@
 
 #include "session-test.h"
 
-#define POLICYDIR STORAGEDIR "/session_policy_local"
+#define POLICYDIR DEFAULT_STORAGE_ROOT "/session_policy_local"
 
 enum test_session_state {
 	TEST_SESSION_STATE_0 = 0,
@@ -523,7 +523,7 @@ static void policy_allowed_bearers(const char *allowed_bearers)
 	policy_save(keyfile, pathname);
 
 	g_free(pathname);
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 }
 
 static void policy_remove_file(void)

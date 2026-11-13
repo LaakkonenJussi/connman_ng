@@ -867,9 +867,10 @@ static int load_config(struct connman_config *config)
 	if (!load_service_from_keyfile(keyfile, config))
 		connman_warn("Config file %s/%s.config does not contain any "
 			"configuration that can be provisioned!",
-			STORAGEDIR, config->ident);
+			USER_STORAGEDIR ? USER_STORAGEDIR : STORAGEDIR,
+			config->ident);
 
-	g_key_file_free(keyfile);
+	g_key_file_unref(keyfile);
 
 	return 0;
 }
@@ -919,7 +920,8 @@ static int read_configs(void)
 
 	DBG("");
 
-	dir = g_dir_open(STORAGEDIR, 0, NULL);
+	dir = g_dir_open(USER_STORAGEDIR ? USER_STORAGEDIR : STORAGEDIR, 0,
+				NULL);
 	if (dir) {
 		const gchar *file;
 
@@ -959,7 +961,8 @@ static int read_configs(void)
 }
 
 static void config_notify_handler(struct inotify_event *event,
-                                        const char *ident)
+					const char *ident,
+					gpointer user_data)
 {
 	char *ext;
 
@@ -1009,6 +1012,30 @@ static void config_notify_handler(struct inotify_event *event,
 		g_hash_table_remove(config_table, ident);
 }
 
+static char *user_storage_dir = NULL;
+
+static void uid_changed(uid_t uid)
+{
+	if (user_storage_dir) {
+		connman_inotify_unregister(user_storage_dir,
+					config_notify_handler, NULL);
+		g_free(user_storage_dir);
+	}
+
+	/* If not set USER_STORAGEDIR is NULL */
+	user_storage_dir = g_strdup(USER_STORAGEDIR);
+
+	if (uid != geteuid())
+		connman_inotify_register(user_storage_dir,
+					config_notify_handler, NULL, NULL);
+}
+
+static struct connman_notifier config_notifier = {
+	.name			= "config",
+	.priority		= CONNMAN_NOTIFIER_PRIORITY_DEFAULT,
+	.storage_uid_changed	= uid_changed
+};
+
 int __connman_config_init(void)
 {
 	DBG("");
@@ -1016,7 +1043,8 @@ int __connman_config_init(void)
 	config_table = g_hash_table_new_full(g_str_hash, g_str_equal,
 						NULL, unregister_config);
 
-	connman_inotify_register(STORAGEDIR, config_notify_handler);
+	connman_inotify_register(STORAGEDIR, config_notify_handler, NULL, NULL);
+	connman_notifier_register(&config_notifier);
 
 	return read_configs();
 }
@@ -1027,7 +1055,15 @@ void __connman_config_cleanup(void)
 
 	cleanup = true;
 
-	connman_inotify_unregister(STORAGEDIR, config_notify_handler);
+	connman_notifier_unregister(&config_notifier);
+
+	connman_inotify_unregister(STORAGEDIR, config_notify_handler, NULL);
+
+	if (user_storage_dir) {
+		connman_inotify_unregister(user_storage_dir,
+					config_notify_handler, NULL);
+		g_free(user_storage_dir);
+	}
 
 	g_hash_table_destroy(config_table);
 	config_table = NULL;
