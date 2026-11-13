@@ -4101,46 +4101,8 @@ static void storage_test_invalid_user_change1()
 	g_free(test_path);
 }
 
-static struct connman_storage_callbacks access_deny_callbacks = {
-	.uid_changed = uid_changed_cb,
-};
-
-/* Change to valid user but access is denied */
-static void storage_test_invalid_user_change2()
-{
-	gchar *test_path;
-	mode_t m_dir = 0700;
-	mode_t m_file = 0600;
-
-	test_path = setup_test_directory();
-	set_user_pw_dir_root(test_path);
-	g_assert_cmpint(__connman_storage_init(test_path, test_user_dir, m_dir,
-								m_file), ==, 0);
-
-	init_dbus(TRUE);
-
-	g_assert_cmpint(__connman_storage_register_dbus(
-				STORAGE_DIR_TYPE_MAIN, &access_deny_callbacks),
-				==, 0);
-	g_assert_cmpint(__connman_storage_register_dbus(
-				STORAGE_DIR_TYPE_VPN, &access_deny_callbacks),
-				==, 0);
-
-	user_change_process(UID_USER, USER_CHANGE_ACCESS_DENIED,
-					"net.connman.Error.PermissionDenied",
-					false, NULL, NULL);
-
-	g_assert_cmpint(current_uid, ==, UID_ROOT);
-
-	__connman_storage_cleanup();
-	clean_dbus();
-	cleanup_test_directory(test_path);
-
-	g_free(test_path);
-}
-
 /* Test invalid users with internal process */
-static void storage_test_invalid_user_change3()
+static void storage_test_invalid_user_change2()
 {
 	gchar *test_path;
 	mode_t m_dir = 0700;
@@ -5924,12 +5886,10 @@ int main(int argc, char **argv)
 				storage_test_vpn_crash5);
 	g_test_add_func(TEST_PREFIX "/test_user_vpn_crash6",
 				storage_test_vpn_crash6);
-	/*g_test_add_func(TEST_PREFIX "/test_invalid_user_change1",
+	g_test_add_func(TEST_PREFIX "/test_invalid_user_change1",
 				storage_test_invalid_user_change1);
 	g_test_add_func(TEST_PREFIX "/test_invalid_user_change2",
-				storage_test_invalid_user_change2);*/
-	g_test_add_func(TEST_PREFIX "/test_invalid_user_change3",
-				storage_test_invalid_user_change3);
+				storage_test_invalid_user_change2);
 	g_test_add_func(TEST_PREFIX "/test_dbus_security_user_change1",
 				storage_test_dbus_security_user_change1);
 	g_test_add_func(TEST_PREFIX "/test_dbus_security_user_change2",
